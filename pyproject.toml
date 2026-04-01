@@ -7,7 +7,14 @@ authors = [
     { name = "nikolai-in", email = "nikolai-in@tuta.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "click>=8.3.1",
+    "openssh-wrapper>=0.4",
+    "paramiko>=4.0.0",
+    "proxmoxer>=2.3.0",
+    "requests>=2.33.1",
+    "requests-toolbelt>=1.0.0",
+]
 
 [project.scripts]
 garm-proxmox-provider = "garm_proxmox_provider:main"
