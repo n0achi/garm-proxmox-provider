@@ -1,4 +1,16 @@
-"""Cloud-init user-data renderer for GARM runner bootstrap."""
+"""Cloud-init / cloudbase-init user-data renderer for GARM runner bootstrap.
+
+Templates assume the runner binary is already present on the VM image (installed
+by the Packer build).  The scripts only handle registration, service start, and
+the GARM status callback.
+
+Linux (cloud-init):   renders a ``#cloud-config`` YAML with a ``runcmd`` block.
+Windows (cloudbase-init): renders a ``#ps1_sysnative`` PowerShell script.
+
+Forge detection:
+  - Explicit:  ``extra_specs.forge_type = "gitea"`` (or ``"forgejo"``)
+  - Implicit:  ``repo_url`` does not contain ``github.com``
+"""
 
 from __future__ import annotations
 
@@ -9,94 +21,103 @@ if TYPE_CHECKING:
     from .config import DefaultsConfig
     from .models import BootstrapInstance
 
-# Template for the runner bootstrap runcmd script.
-# Uses str.format() placeholders.
-_RUNNER_SCRIPT_TEMPLATE = """\
+# ---------------------------------------------------------------------------
+# Forge detection
+# ---------------------------------------------------------------------------
+
+
+def _is_gitea(bootstrap: BootstrapInstance) -> bool:
+    """Return True if the bootstrap targets a Gitea/Forgejo instance."""
+    forge_type = bootstrap.extra_specs.get("forge_type", "")
+    if forge_type:
+        return forge_type.lower() in ("gitea", "forgejo")
+    return "github.com" not in bootstrap.repo_url
+
+
+# ---------------------------------------------------------------------------
+# Linux scripts — runner binary pre-installed by Packer image
+# ---------------------------------------------------------------------------
+
+_LINUX_GITHUB_SCRIPT = """\
 #!/bin/bash
 set -euo pipefail
 
 export HOME=/home/runner
 RUNNER_HOME=/home/runner/actions-runner
 
-# Create runner user and home dir
-id runner &>/dev/null || useradd -m -s /bin/bash runner
-mkdir -p "$RUNNER_HOME"
-chown runner:runner "$RUNNER_HOME"
-
-# Install dependencies
-if command -v apt-get &>/dev/null; then
-    apt-get install -y -q curl tar jq git
-elif command -v dnf &>/dev/null; then
-    dnf install -y curl tar jq git
-elif command -v yum &>/dev/null; then
-    yum install -y curl tar jq git
-fi
+# Fetch runner registration token from GARM metadata
+RUNNER_TOKEN=$(curl -fsSL \\
+    -H "Authorization: Bearer {instance_token}" \\
+    "{metadata_url}/runner-registration-token" | tr -d '"')
 
 cd "$RUNNER_HOME"
 
-# Download runner tarball
-RUNNER_FILENAME="{filename}"
-RUNNER_DOWNLOAD_URL="{download_url}"
-curl -fsSL -o "$RUNNER_FILENAME" "$RUNNER_DOWNLOAD_URL"
-{checksum_check}
-tar xzf "$RUNNER_FILENAME"
-
-# Fetch runner registration token from GARM metadata
-RUNNER_TOKEN=$(curl -fsSL \
-    -H "Authorization: Bearer {instance_token}" \
-    "{metadata_url}/runner-registration-token" | tr -d '"')
-
-# Configure runner
-su -s /bin/bash runner -c \
-    "./config.sh \
-        --url '{repo_url}' \
-        --token '${{RUNNER_TOKEN}}' \
-        --name '{name}' \
-        --labels '{labels}' \
-        --unattended \
-        --replace \
+# Configure runner (binary pre-installed by Packer template)
+su -s /bin/bash runner -c \\
+    "./config.sh \\
+        --url '{repo_url}' \\
+        --token '${{RUNNER_TOKEN}}' \\
+        --name '{name}' \\
+        --labels '{labels}' \\
+        --unattended \\
+        --replace \\
         --ephemeral"
 
-# Install and start as a systemd service
-./svc.sh install runner
+# Start the pre-installed systemd service
 ./svc.sh start
 
 # Notify GARM that the instance is running
-curl -fsSL -X POST \
-    -H "Authorization: Bearer {instance_token}" \
-    -H "Content-Type: application/json" \
-    "{callback_url}" \
+curl -fsSL -X POST \\
+    -H "Authorization: Bearer {instance_token}" \\
+    -H "Content-Type: application/json" \\
+    "{callback_url}" \\
     -d '{{"provider_id":"{provider_id}","name":"{name}","status":"running"}}'
 """
 
-_CHECKSUM_CHECK_TEMPLATE = """\
-echo "{sha256}  {filename}" | sha256sum -c - || \\
-    {{ echo "Runner checksum mismatch" >&2; exit 1; }}"""
+_LINUX_GITEA_SCRIPT = """\
+#!/bin/bash
+set -euo pipefail
+
+export HOME=/home/runner
+RUNNER_HOME=/home/runner/act_runner
+
+# Fetch runner registration token from GARM metadata
+RUNNER_TOKEN=$(curl -fsSL \\
+    -H "Authorization: Bearer {instance_token}" \\
+    "{metadata_url}/runner-registration-token" | tr -d '"')
+
+cd "$RUNNER_HOME"
+
+# Register act_runner (binary pre-installed by Packer template)
+su -s /bin/bash runner -c \\
+    "./act_runner register \\
+        --instance '{repo_url}' \\
+        --token '${{RUNNER_TOKEN}}' \\
+        --name '{name}' \\
+        --labels '{labels}' \\
+        --no-interactive"
+
+# Start the pre-installed systemd service
+systemctl start act_runner
+
+# Notify GARM that the instance is running
+curl -fsSL -X POST \\
+    -H "Authorization: Bearer {instance_token}" \\
+    -H "Content-Type: application/json" \\
+    "{callback_url}" \\
+    -d '{{"provider_id":"{provider_id}","name":"{name}","status":"running"}}'
+"""
 
 
-def render_userdata(
+def _render_linux_userdata(
     bootstrap: BootstrapInstance,
     provider_id: str,
     defaults: DefaultsConfig,
 ) -> str:
-    """Return a cloud-config YAML document that bootstraps the GARM runner."""
-    tool = bootstrap.get_tool()
-    download_url = tool.download_url if tool else ""
-    filename = tool.filename if tool else "runner.tar.gz"
-    sha256 = tool.sha256_checksum if tool else ""
-
-    checksum_check = (
-        _CHECKSUM_CHECK_TEMPLATE.format(sha256=sha256, filename=filename)
-        if sha256
-        else ""
-    )
-
+    """Render a ``#cloud-config`` YAML document for Linux."""
     labels = ",".join(bootstrap.labels) if bootstrap.labels else bootstrap.pool_id
-
-    script = _RUNNER_SCRIPT_TEMPLATE.format(
-        filename=filename,
-        download_url=download_url,
-        checksum_check=checksum_check,
+    template = _LINUX_GITEA_SCRIPT if _is_gitea(bootstrap) else _LINUX_GITHUB_SCRIPT
+    script = template.format(
         instance_token=bootstrap.instance_token,
         metadata_url=bootstrap.metadata_url.rstrip("/"),
         repo_url=bootstrap.repo_url,
@@ -106,7 +127,6 @@ def render_userdata(
         provider_id=provider_id,
     )
 
-    # Build ssh_authorized_keys list for cloud-config
     ssh_keys: list[str] = []
     if defaults.ssh_public_key:
         ssh_keys.append(defaults.ssh_public_key.strip())
@@ -116,10 +136,9 @@ def render_userdata(
         keys_yaml = "\n".join(f"      - {k!r}" for k in ssh_keys)
         ssh_block = f"    ssh_authorized_keys:\n{keys_yaml}\n"
 
-    # Escape the script for embedding in YAML (indent 4 spaces)
     script_indented = textwrap.indent(script.rstrip(), "      ")
 
-    cloud_config = f"""\
+    return f"""\
 #cloud-config
 users:
   - name: runner
@@ -134,4 +153,114 @@ runcmd:
   - |
 {script_indented}
 """
-    return cloud_config
+
+
+# ---------------------------------------------------------------------------
+# Windows scripts — runner binary pre-installed by Packer image
+# cloudbase-init processes #ps1_sysnative as a 64-bit PowerShell script.
+# ---------------------------------------------------------------------------
+
+_WINDOWS_GITHUB_SCRIPT = """\
+#ps1_sysnative
+$ErrorActionPreference = 'Stop'
+
+$RunnerHome = 'C:\\actions-runner'
+$MetadataUrl = '{metadata_url}'
+$InstanceToken = '{instance_token}'
+$RepoUrl = '{repo_url}'
+$RunnerName = '{name}'
+$RunnerLabels = '{labels}'
+$CallbackUrl = '{callback_url}'
+$ProviderId = '{provider_id}'
+
+# Fetch registration token from GARM metadata
+$RunnerToken = (Invoke-RestMethod -Uri "$MetadataUrl/runner-registration-token" `
+    -Headers @{{ Authorization = "Bearer $InstanceToken" }}).Trim('"')
+
+Set-Location $RunnerHome
+
+# Configure runner (binary pre-installed by Packer template)
+& .\\config.cmd --url $RepoUrl `
+    --token $RunnerToken `
+    --name $RunnerName `
+    --labels $RunnerLabels `
+    --unattended --replace --ephemeral
+
+# Start the pre-installed service
+& .\\svc.cmd start
+
+# Notify GARM that the instance is running
+Invoke-RestMethod -Uri $CallbackUrl -Method Post `
+    -Headers @{{ Authorization = "Bearer $InstanceToken"; 'Content-Type' = 'application/json' }} `
+    -Body "{{`"provider_id`":`"$ProviderId`",`"name`":`"$RunnerName`",`"status`":`"running`"}}"
+"""
+
+_WINDOWS_GITEA_SCRIPT = """\
+#ps1_sysnative
+$ErrorActionPreference = 'Stop'
+
+$RunnerHome = 'C:\\act_runner'
+$MetadataUrl = '{metadata_url}'
+$InstanceToken = '{instance_token}'
+$RepoUrl = '{repo_url}'
+$RunnerName = '{name}'
+$RunnerLabels = '{labels}'
+$CallbackUrl = '{callback_url}'
+$ProviderId = '{provider_id}'
+
+# Fetch registration token from GARM metadata
+$RunnerToken = (Invoke-RestMethod -Uri "$MetadataUrl/runner-registration-token" `
+    -Headers @{{ Authorization = "Bearer $InstanceToken" }}).Trim('"')
+
+Set-Location $RunnerHome
+
+# Register act_runner (binary pre-installed by Packer template)
+& .\\act_runner.exe register `
+    --instance $RepoUrl `
+    --token $RunnerToken `
+    --name $RunnerName `
+    --labels $RunnerLabels `
+    --no-interactive
+
+# Start the pre-installed service
+Start-Service act_runner
+
+# Notify GARM that the instance is running
+Invoke-RestMethod -Uri $CallbackUrl -Method Post `
+    -Headers @{{ Authorization = "Bearer $InstanceToken"; 'Content-Type' = 'application/json' }} `
+    -Body "{{`"provider_id`":`"$ProviderId`",`"name`":`"$RunnerName`",`"status`":`"running`"}}"
+"""
+
+
+def _render_windows_userdata(
+    bootstrap: BootstrapInstance,
+    provider_id: str,
+) -> str:
+    """Render a cloudbase-init PowerShell script for Windows."""
+    labels = ",".join(bootstrap.labels) if bootstrap.labels else bootstrap.pool_id
+    template = _WINDOWS_GITEA_SCRIPT if _is_gitea(bootstrap) else _WINDOWS_GITHUB_SCRIPT
+    return template.format(
+        instance_token=bootstrap.instance_token,
+        metadata_url=bootstrap.metadata_url.rstrip("/"),
+        repo_url=bootstrap.repo_url,
+        name=bootstrap.name,
+        labels=labels,
+        callback_url=bootstrap.callback_url,
+        provider_id=provider_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def render_userdata(
+    bootstrap: BootstrapInstance,
+    provider_id: str,
+    defaults: DefaultsConfig,
+) -> str:
+    """Return the appropriate user-data document for the bootstrap's OS type."""
+    if bootstrap.os_type == "windows":
+        return _render_windows_userdata(bootstrap, provider_id)
+    return _render_linux_userdata(bootstrap, provider_id, defaults)

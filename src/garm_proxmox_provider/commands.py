@@ -51,8 +51,11 @@ def _apply_extra_specs(bootstrap: BootstrapInstance, cfg: Any) -> dict[str, Any]
 
     overrides["cores"] = int(es.get("cores", d.cores))
     overrides["memory_mb"] = int(es.get("memory_mb", d.memory_mb))
-    overrides["disk_gb"] = int(es.get("disk_gb", d.disk_gb))
     overrides["node"] = es.get("node", d.node)
+
+    # Allow per-instance template override via extra_specs
+    tmpl_raw = es.get("template_vmid")
+    overrides["template_vmid"] = int(tmpl_raw) if tmpl_raw is not None else None
     return overrides
 
 
@@ -88,10 +91,12 @@ def cmd_create_instance() -> None:
             controller_id=bootstrap.controller_id,
             pool_id=bootstrap.pool_id,
             userdata=userdata,
+            os_type=bootstrap.os_type,
+            os_arch=bootstrap.os_arch,
             cores=overrides["cores"],
             memory_mb=overrides["memory_mb"],
-            disk_gb=overrides["disk_gb"],
             node=overrides["node"],
+            template_vmid=overrides["template_vmid"],
         )
         # Re-render user-data with real provider_id for the snippet
         if cfg.defaults.snippets_storage:

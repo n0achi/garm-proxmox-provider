@@ -33,6 +33,19 @@ class DefaultsConfig:
     bridge: str = "vmbr0"
     ssh_public_key: str | None = None
     snippets_storage: str | None = None
+    pool_templates: dict[str, int] = field(default_factory=dict)
+    """Map of ``"os_type/os_arch"`` → VMID for per-OS template selection.
+
+    Example TOML::
+
+        [pool_templates]
+        "linux/amd64"   = 9000
+        "linux/arm64"   = 9001
+        "windows/amd64" = 9002
+
+    When creating an instance, the provider looks up ``os_type/os_arch`` in
+    this map first, then falls back to ``template_vmid``.
+    """
 
 
 @dataclass
@@ -80,6 +93,24 @@ def load_config(path: str) -> Config:
                 "[defaults].template_vmid must be an integer"
             ) from None
 
+    # --- Pool templates section (optional) ------------------------------------
+    # Format: {"linux/amd64": 9000, "windows/amd64": 9002, ...}
+    pool_templates_raw = data.get("pool_templates", {})
+    pool_templates: dict[str, int] = {}
+    for key, val in pool_templates_raw.items():
+        try:
+            pool_templates[str(key)] = int(val)
+        except (TypeError, ValueError):
+            raise ConfigError(
+                f"[pool_templates].{key!r} must be an integer VMID"
+            ) from None
+
+    # Require at least one template source so create_instance always has a VMID
+    if template_vmid is None and not pool_templates:
+        raise ConfigError(
+            "At least one of [defaults].template_vmid or [pool_templates] must be set"
+        )
+
     defaults = DefaultsConfig(
         node=def_data["node"],
         storage=def_data.get("storage", "local-lvm"),
@@ -91,6 +122,7 @@ def load_config(path: str) -> Config:
         bridge=def_data.get("bridge", "vmbr0"),
         ssh_public_key=def_data.get("ssh_public_key"),
         snippets_storage=def_data.get("snippets_storage"),
+        pool_templates=pool_templates,
     )
 
     return Config(pve=pve, defaults=defaults)

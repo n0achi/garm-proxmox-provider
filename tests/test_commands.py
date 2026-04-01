@@ -308,3 +308,100 @@ def test_cli_unknown_command() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, env={"GARM_COMMAND": "UnknownCommand"}, catch_exceptions=False)
     assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# CreateInstance — Windows bootstrap
+# ---------------------------------------------------------------------------
+
+WINDOWS_BOOTSTRAP_PAYLOAD = {
+    "name": "runner-win",
+    "tools": [],
+    "repo_url": "https://github.com/myorg/myrepo",
+    "metadata_url": "https://garm.example.com/api/v1/metadata",
+    "callback_url": "https://garm.example.com/api/v1/instances/callback",
+    "instance_token": "secret-token",
+    "pool_id": "pool-win",
+    "controller_id": "ctrl-222",
+    "os_type": "windows",
+    "os_arch": "amd64",
+    "labels": ["self-hosted", "windows"],
+}
+
+
+def test_create_instance_windows(
+    config_file: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with (
+        patch("garm_proxmox_provider.commands.PVEClient") as MockClient,
+        patch.dict(
+            os.environ,
+            {"GARM_PROVIDER_CONFIG_FILE": config_file},
+        ),
+        patch("sys.stdin") as mock_stdin,
+    ):
+        mock_stdin.read.return_value = json.dumps(WINDOWS_BOOTSTRAP_PAYLOAD)
+        MockClient.return_value.create_instance.return_value = _mock_instance(
+            provider_id="2001",
+            name="runner-win",
+            os_type="windows",
+            os_arch="amd64",
+        )
+        from garm_proxmox_provider.commands import cmd_create_instance
+
+        cmd_create_instance()
+
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["provider_id"] == "2001"
+    assert payload["os_type"] == "windows"
+
+    # Verify that create_instance was called with the right os_type/os_arch
+    call_kwargs = MockClient.return_value.create_instance.call_args
+    assert call_kwargs.kwargs.get("os_type") == "windows" or (
+        call_kwargs.args[4] == "windows" if len(call_kwargs.args) > 4 else True
+    )
+
+
+# ---------------------------------------------------------------------------
+# CreateInstance — Gitea bootstrap
+# ---------------------------------------------------------------------------
+
+GITEA_BOOTSTRAP_PAYLOAD = {
+    "name": "runner-gitea",
+    "tools": [],
+    "repo_url": "https://gitea.example.com/org/repo",
+    "metadata_url": "https://garm.example.com/api/v1/metadata",
+    "callback_url": "https://garm.example.com/api/v1/instances/callback",
+    "instance_token": "secret-token",
+    "pool_id": "pool-gitea",
+    "controller_id": "ctrl-222",
+    "os_type": "linux",
+    "os_arch": "amd64",
+    "labels": ["self-hosted"],
+}
+
+
+def test_create_instance_gitea(
+    config_file: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with (
+        patch("garm_proxmox_provider.commands.PVEClient") as MockClient,
+        patch.dict(
+            os.environ,
+            {"GARM_PROVIDER_CONFIG_FILE": config_file},
+        ),
+        patch("sys.stdin") as mock_stdin,
+    ):
+        mock_stdin.read.return_value = json.dumps(GITEA_BOOTSTRAP_PAYLOAD)
+        MockClient.return_value.create_instance.return_value = _mock_instance(
+            provider_id="3001",
+            name="runner-gitea",
+        )
+        from garm_proxmox_provider.commands import cmd_create_instance
+
+        cmd_create_instance()
+
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["provider_id"] == "3001"

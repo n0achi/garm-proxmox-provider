@@ -42,6 +42,8 @@ def _build_garm_meta(
     controller_id: str,
     pool_id: str,
     instance_name: str,
+    os_type: str = "linux",
+    os_arch: str = "amd64",
 ) -> str:
     """Serialise GARM metadata to a single-line JSON string for VM description."""
     return json.dumps(
@@ -50,6 +52,8 @@ def _build_garm_meta(
             "garm_controller_id": controller_id,
             "garm_pool_id": pool_id,
             "garm_instance_name": instance_name,
+            "garm_os_type": os_type,
+            "garm_os_arch": os_arch,
         },
         separators=(",", ":"),
     )
@@ -141,6 +145,31 @@ class PVEClient:
     def _next_vmid(self) -> int:
         return int(self._prox.cluster.nextid.get())
 
+    def _resolve_template_vmid(
+        self,
+        os_type: str,
+        os_arch: str,
+        override: int | None = None,
+    ) -> int:
+        """Return the template VMID to clone for the given OS type/arch.
+
+        Priority:
+        1. ``override`` (per-instance ``extra_specs.template_vmid``)
+        2. ``pool_templates["os_type/os_arch"]``
+        3. ``defaults.template_vmid`` (fallback)
+        """
+        if override is not None:
+            return override
+        key = f"{os_type}/{os_arch}"
+        if key in self._defaults.pool_templates:
+            return self._defaults.pool_templates[key]
+        if self._defaults.template_vmid is not None:
+            return self._defaults.template_vmid
+        raise RuntimeError(
+            f"No template_vmid configured for {key!r}. "
+            "Set [defaults].template_vmid or add an entry to [pool_templates]."
+        )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -169,8 +198,8 @@ class PVEClient:
                 Instance(
                     provider_id=str(vmid),
                     name=meta.get("garm_instance_name", config.get("name", "")),
-                    os_type="linux",
-                    os_arch="amd64",
+                    os_type=meta.get("garm_os_type", "linux"),
+                    os_arch=meta.get("garm_os_arch", "amd64"),
                     status=_pve_status_to_garm(res.get("status", "")),
                     pool_id=pool_id,
                 )
@@ -189,8 +218,8 @@ class PVEClient:
         return Instance(
             provider_id=str(vmid),
             name=meta.get("garm_instance_name", config.get("name", "")),
-            os_type="linux",
-            os_arch="amd64",
+            os_type=meta.get("garm_os_type", "linux"),
+            os_arch=meta.get("garm_os_arch", "amd64"),
             status=_pve_status_to_garm(res.get("status", "")),
             pool_id=meta.get("garm_pool_id", ""),
             addresses=addresses,
@@ -202,30 +231,27 @@ class PVEClient:
         controller_id: str,
         pool_id: str,
         userdata: str,
+        os_type: str = "linux",
+        os_arch: str = "amd64",
         *,
         cores: int | None = None,
         memory_mb: int | None = None,
-        disk_gb: int | None = None,
         node: str | None = None,
+        template_vmid: int | None = None,
     ) -> Instance:
         """Clone template, inject cloud-init, start VM; return Instance."""
         d = self._defaults
         node = node or d.node
         cores = cores or d.cores
         memory_mb = memory_mb or d.memory_mb
-        disk_gb = disk_gb or d.disk_gb
 
-        if d.template_vmid is None:
-            raise RuntimeError(
-                "defaults.template_vmid must be set in the provider config "
-                "to create instances"
-            )
+        tmpl_vmid = self._resolve_template_vmid(os_type, os_arch, template_vmid)
 
         vmid = self._next_vmid()
-        logger.info("Cloning template %d -> VMID %d (%s)", d.template_vmid, vmid, name)
+        logger.info("Cloning template %d -> VMID %d (%s)", tmpl_vmid, vmid, name)
 
         # Clone the template (full clone)
-        upid = self._prox.nodes(node).qemu(d.template_vmid).clone.post(
+        upid = self._prox.nodes(node).qemu(tmpl_vmid).clone.post(
             newid=vmid,
             name=name,
             full=1,
@@ -238,7 +264,7 @@ class PVEClient:
         config_update: dict[str, Any] = {
             "cores": cores,
             "memory": memory_mb,
-            "description": _build_garm_meta(controller_id, pool_id, name),
+            "description": _build_garm_meta(controller_id, pool_id, name, os_type, os_arch),
         }
         if d.ssh_public_key:
             from urllib.parse import quote
@@ -272,8 +298,8 @@ class PVEClient:
         return Instance(
             provider_id=str(vmid),
             name=name,
-            os_type="linux",
-            os_arch="amd64",
+            os_type=os_type,
+            os_arch=os_arch,
             status=InstanceStatus.RUNNING,
             pool_id=pool_id,
         )

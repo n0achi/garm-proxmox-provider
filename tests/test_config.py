@@ -105,3 +105,83 @@ def test_invalid_toml(tmp_path: Path) -> None:
     bad_path.write_text("this is not valid toml [[[[")
     with pytest.raises(ConfigError, match="Invalid TOML"):
         load_config(str(bad_path))
+
+
+def test_missing_template_source(tmp_path: Path) -> None:
+    """Config with neither template_vmid nor [pool_templates] must fail."""
+    bad = """\
+[pve]
+host = "https://pve.example.com:8006"
+user = "root@pam"
+token_name = "garm"
+token_value = "aaaa"
+
+[defaults]
+node = "pve1"
+storage = "local-lvm"
+"""
+    with pytest.raises(ConfigError, match="template_vmid"):
+        load_config(_write_config(tmp_path, bad))
+
+
+def test_pool_templates_loaded(tmp_path: Path) -> None:
+    toml = """\
+[pve]
+host = "https://pve.example.com:8006"
+user = "root@pam"
+token_name = "garm"
+token_value = "aaaa"
+
+[defaults]
+node = "pve1"
+
+[pool_templates]
+"linux/amd64" = 9000
+"linux/arm64" = 9001
+"windows/amd64" = 9002
+"""
+    cfg = load_config(_write_config(tmp_path, toml))
+    assert cfg.defaults.pool_templates == {
+        "linux/amd64": 9000,
+        "linux/arm64": 9001,
+        "windows/amd64": 9002,
+    }
+    assert cfg.defaults.template_vmid is None
+
+
+def test_pool_templates_only_no_default_vmid_ok(tmp_path: Path) -> None:
+    """pool_templates alone (without template_vmid) is a valid config."""
+    toml = """\
+[pve]
+host = "https://pve.example.com:8006"
+user = "root@pam"
+token_name = "garm"
+token_value = "aaaa"
+
+[defaults]
+node = "pve1"
+
+[pool_templates]
+"linux/amd64" = 9000
+"""
+    cfg = load_config(_write_config(tmp_path, toml))
+    assert cfg.defaults.template_vmid is None
+    assert cfg.defaults.pool_templates["linux/amd64"] == 9000
+
+
+def test_pool_templates_invalid_vmid(tmp_path: Path) -> None:
+    toml = """\
+[pve]
+host = "https://pve.example.com:8006"
+user = "root@pam"
+token_name = "garm"
+token_value = "aaaa"
+
+[defaults]
+node = "pve1"
+
+[pool_templates]
+"linux/amd64" = "not-an-int"
+"""
+    with pytest.raises(ConfigError, match="integer VMID"):
+        load_config(_write_config(tmp_path, toml))
