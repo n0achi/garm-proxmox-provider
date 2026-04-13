@@ -10,7 +10,7 @@ WORKDIR /src
 RUN git clone --depth 1 --branch ${GARM_VERSION} https://github.com/cloudbase/garm.git .
 RUN go build -o /out/garm ./cmd/garm
 
-FROM ghcr.io/astral-sh/uv:0.4.28-python3.12-alpine AS provider-build
+FROM ghcr.io/astral-sh/uv:0.4.28-python3.14-alpine AS provider-build
 WORKDIR /src
 COPY pyproject.toml uv.lock /src/
 RUN uv sync --frozen --no-dev
