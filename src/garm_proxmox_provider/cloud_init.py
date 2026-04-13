@@ -88,16 +88,22 @@ RUNNER_TOKEN=$(curl -fsSL \\
 
 cd "$RUNNER_HOME"
 
+# Generate default config
+su -s /bin/bash runner -c "./act_runner generate-config > config.yaml"
+
 # Register act_runner (binary pre-installed by Packer template)
 su -s /bin/bash runner -c \\
     "./act_runner register \\
+        --config config.yaml \\
         --instance '{repo_url}' \\
         --token '${{RUNNER_TOKEN}}' \\
         --name '{name}' \\
         --labels '{labels}' \\
         --no-interactive"
 
-# Start the pre-installed systemd service
+# Update service to use config and start
+sed -i 's/act_runner daemon/act_runner daemon --config config.yaml/' /etc/systemd/system/act_runner.service
+systemctl daemon-reload
 systemctl start act_runner
 
 # Notify GARM that the instance is running
@@ -214,13 +220,20 @@ $RunnerToken = (Invoke-RestMethod -Uri "$MetadataUrl/runner-registration-token" 
 
 Set-Location $RunnerHome
 
+# Generate default config
+& .\\act_runner.exe generate-config | Out-File -Encoding utf8 config.yaml
+
 # Register act_runner (binary pre-installed by Packer template)
 & .\\act_runner.exe register `
+    --config config.yaml `
     --instance $RepoUrl `
     --token $RunnerToken `
     --name $RunnerName `
     --labels $RunnerLabels `
     --no-interactive
+
+# Update service to use config
+nssm set act_runner AppParameters "daemon --config C:\\act_runner\\config.yaml"
 
 # Start the pre-installed service
 Start-Service act_runner
@@ -255,7 +268,9 @@ def _render_windows_userdata(
 # ---------------------------------------------------------------------------
 
 
-def render_lxc_env_vars(bootstrap: BootstrapInstance, provider_id: str) -> dict[str, str]:
+def render_lxc_env_vars(
+    bootstrap: BootstrapInstance, provider_id: str
+) -> dict[str, str]:
     """Return a dict of environment variables to inject into an LXC container.
 
     The LXC template image must have a startup script (e.g. via systemd or
