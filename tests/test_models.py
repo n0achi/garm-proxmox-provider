@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from garm_proxmox_provider.models import (
     BootstrapInstance,
     Instance,
     InstanceStatus,
-    RunnerTool,
 )
 
 BOOTSTRAP_DICT = {

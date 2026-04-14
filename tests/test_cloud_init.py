@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from garm_proxmox_provider.cloud_init import _is_gitea, render_lxc_env_vars, render_userdata
 from garm_proxmox_provider.config import DefaultsConfig

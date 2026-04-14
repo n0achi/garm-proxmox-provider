@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from garm_proxmox_provider.client import PVEClient, _parse_garm_meta
+from garm_proxmox_provider.client import PVEClient
 from garm_proxmox_provider.config import Config, DefaultsConfig, PVEConfig
-from garm_proxmox_provider.models import Address, Instance, InstanceStatus
+from garm_proxmox_provider.models import InstanceStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -412,7 +412,7 @@ def test_start_lxc_instance() -> None:
     }
     mock_prox.nodes.return_value.lxc.return_value.interfaces.get.return_value = []
 
-    inst = client.start_instance("200")
+    client.start_instance("200")
 
     mock_prox.nodes.return_value.lxc.return_value.status.start.post.assert_called_once()
     mock_prox.nodes.return_value.qemu.assert_not_called()
@@ -436,7 +436,7 @@ def test_stop_lxc_instance() -> None:
     }
     mock_prox.nodes.return_value.lxc.return_value.interfaces.get.return_value = []
 
-    inst = client.stop_instance("200")
+    client.stop_instance("200")
 
     mock_prox.nodes.return_value.lxc.return_value.status.shutdown.post.assert_called_once()
     mock_prox.nodes.return_value.qemu.assert_not_called()

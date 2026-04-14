@@ -251,5 +251,55 @@ def list_templates_cmd(config: str) -> None:
         sys.exit(1)
 
 
+@cli.command(name="lint-config")
+@click.option(
+    "--config",
+    envvar="GARM_PROVIDER_CONFIG_FILE",
+    required=True,
+    help="Path to provider TOML config.",
+)
+def lint_config_cmd(config: str) -> None:
+    """Validate the provider configuration file."""
+    from .setup import lint_config
+
+    lint_config(config)
+
+
+@cli.command(name="setup-proxmox")
+@click.option("--host", required=True, help="Proxmox host URL (e.g. https://pve:8006)")
+@click.option("--root-user", required=True, help="Root user (e.g. root@pam)")
+@click.option("--root-password", prompt=True, hide_input=True, help="Root password")
+@click.option(
+    "--verify-ssl/--no-verify-ssl", default=True, help="Verify SSL certificate"
+)
+@click.option("--garm-user", default="garm@pve", help="User to create for GARM")
+@click.option("--garm-token-name", default="garm", help="Token name to create")
+@click.option("--garm-role", default="GarmAdmin", help="Role to create")
+@click.option("--garm-pool", default="garm", help="Pool to create")
+def setup_proxmox_cmd(
+    host: str,
+    root_user: str,
+    root_password: str,
+    verify_ssl: bool,
+    garm_user: str,
+    garm_token_name: str,
+    garm_role: str,
+    garm_pool: str,
+) -> None:
+    """Create Proxmox user, role, permissions, and pool for GARM."""
+    from .setup import create_garm_environment
+
+    create_garm_environment(
+        host=host,
+        root_user=root_user,
+        root_password=root_password,
+        verify_ssl=verify_ssl,
+        garm_user=garm_user,
+        garm_token_name=garm_token_name,
+        garm_role=garm_role,
+        garm_pool=garm_pool,
+    )
+
+
 def main() -> None:
     cli()
