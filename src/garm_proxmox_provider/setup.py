@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import urllib.parse
 
 import click
 import urllib3
@@ -61,18 +62,30 @@ def create_garm_environment(
     if not verify_ssl:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+    parsed = (
+        urllib.parse.urlparse(host)
+        if "://" in host
+        else urllib.parse.urlparse(f"https://{host}")
+    )
+    pve_host = parsed.hostname or host
+    pve_port = parsed.port or 8006
+
     prox = ProxmoxAPI(
-        host, user=root_user, password=root_password, verify_ssl=verify_ssl
+        pve_host,
+        port=pve_port,
+        user=root_user,
+        password=root_password,
+        verify_ssl=verify_ssl,
     )
 
-    click.echo(f"Connected to Proxmox VE at {host}")
+    click.echo(f"Connected to Proxmox VE at {pve_host}:{pve_port}")
 
     # 1. Create Role
     # These are the minimum privileges required to clone templates, configure cloud-init/LXC, and manage power state.
     privileges = (
         "VM.Allocate VM.Audit VM.Clone VM.Config.CDROM VM.Config.Cloudinit "
         "VM.Config.CPU VM.Config.Disk VM.Config.HWType VM.Config.Memory "
-        "VM.Config.Network VM.Config.Options VM.Console VM.Migrate VM.Monitor "
+        "VM.Config.Network VM.Config.Options VM.Console VM.Migrate "
         "VM.PowerMgmt Pool.Allocate Datastore.AllocateSpace Datastore.Audit "
         "SDN.Use"
     )
@@ -135,7 +148,7 @@ def create_garm_environment(
         click.echo("=" * 60)
         click.echo("Please add the following to your GARM provider config.toml:\n")
         click.echo("[pve]")
-        click.echo(f'host = "{host}"')
+        click.echo(f'host = "{pve_host}:{pve_port}"')
         click.echo(f'user = "{garm_user}"')
         click.echo(f'token_name = "{garm_token_name}"')
         click.echo(f'token_value = "{token_value}"')

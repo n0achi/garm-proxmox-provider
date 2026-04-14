@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import time
+import urllib.parse
 from typing import TYPE_CHECKING, Any
 
 import urllib3
@@ -75,8 +76,17 @@ class PVEClient:
         if not cfg.pve.verify_ssl:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+        parsed = (
+            urllib.parse.urlparse(cfg.pve.host)
+            if "://" in cfg.pve.host
+            else urllib.parse.urlparse(f"https://{cfg.pve.host}")
+        )
+        pve_host = parsed.hostname or cfg.pve.host
+        pve_port = parsed.port or 8006
+
         self._prox = ProxmoxAPI(
-            cfg.pve.host,
+            pve_host,
+            port=pve_port,
             user=cfg.pve.user,
             token_name=cfg.pve.token_name,
             token_value=cfg.pve.token_value,
