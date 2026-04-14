@@ -40,5 +40,5 @@ RUN mkdir -p /opt/garm/providers.d \
 VOLUME ["/etc/garm"]
 
 EXPOSE 80
-ENTRYPOINT ["/sbin/tini","--"]
+ENTRYPOINT ["/usr/bin/tini","--"]
 CMD ["garm","-config","/etc/garm/config.toml"]
