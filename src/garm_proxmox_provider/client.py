@@ -311,7 +311,6 @@ class PVEClient:
         memory_mb = memory_mb or d.memory_mb
 
         tmpl_vmid = self._resolve_template_vmid(os_type, os_arch, template_vmid, image)
-        vmid = self._next_vmid()
         garm_meta = _build_garm_meta(controller_id, pool_id, name, os_type, os_arch)
 
         found_tmpl = self._find_instance(tmpl_vmid)
@@ -319,33 +318,47 @@ class PVEClient:
             raise RuntimeError(f"Template VMID {tmpl_vmid} not found in cluster")
         _, _, res_type = found_tmpl
 
-        if res_type == "lxc":
-            return self._create_lxc(
-                vmid=vmid,
-                tmpl_vmid=tmpl_vmid,
-                name=name,
-                pool_id=pool_id,
-                garm_meta=garm_meta,
-                os_type=os_type,
-                os_arch=os_arch,
-                cores=cores,
-                memory_mb=memory_mb,
-                node=node,
-                lxc_env_vars=lxc_env_vars or {},
-            )
+        for attempt in range(5):
+            vmid = self._next_vmid()
+            try:
+                if res_type == "lxc":
+                    return self._create_lxc(
+                        vmid=vmid,
+                        tmpl_vmid=tmpl_vmid,
+                        name=name,
+                        pool_id=pool_id,
+                        garm_meta=garm_meta,
+                        os_type=os_type,
+                        os_arch=os_arch,
+                        cores=cores,
+                        memory_mb=memory_mb,
+                        node=node,
+                        lxc_env_vars=lxc_env_vars or {},
+                    )
 
-        return self._create_qemu(
-            vmid=vmid,
-            tmpl_vmid=tmpl_vmid,
-            name=name,
-            pool_id=pool_id,
-            garm_meta=garm_meta,
-            userdata=userdata,
-            os_type=os_type,
-            os_arch=os_arch,
-            cores=cores,
-            memory_mb=memory_mb,
-            node=node,
+                return self._create_qemu(
+                    vmid=vmid,
+                    tmpl_vmid=tmpl_vmid,
+                    name=name,
+                    pool_id=pool_id,
+                    garm_meta=garm_meta,
+                    userdata=userdata,
+                    os_type=os_type,
+                    os_arch=os_arch,
+                    cores=cores,
+                    memory_mb=memory_mb,
+                    node=node,
+                )
+            except Exception as exc:
+                if "File exists" in str(exc) and attempt < 4:
+                    logger.warning("VMID collision (likely %d), retrying...", vmid)
+                    import time
+
+                    time.sleep(1)
+                    continue
+                raise
+        raise RuntimeError(
+            "Failed to create instance after retries due to VMID collisions"
         )
 
     def _create_qemu(
