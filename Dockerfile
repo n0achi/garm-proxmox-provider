@@ -2,8 +2,15 @@
 # Combined GARM controller + Proxmox external provider
 # This image runs garm as the primary process and bundles the provider binary.
 
-ARG GARM_VERSION=v0.1.8
-FROM ghcr.io/cloudbase/garm:${GARM_VERSION} AS garm-bin
+ARG GARM_VERSION=main
+FROM golang:1.23-bookworm AS garm-build
+ARG GARM_VERSION
+
+RUN apt-get update && apt-get install -y git curl tar build-essential nodejs npm && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch ${GARM_VERSION} https://github.com/cloudbase/garm.git .
+RUN make build-webui
+RUN CGO_ENABLED=1 make build
 
 FROM ghcr.io/astral-sh/uv:debian-slim AS provider-build
 WORKDIR /src
@@ -21,8 +28,8 @@ RUN apt-get update && apt-get install -y ca-certificates tini openssl libffi8 &&
 WORKDIR /opt/garm
 
 # GARM binary
-COPY --from=garm-bin /bin/garm /usr/local/bin/garm
-COPY --from=garm-bin /bin/garm-cli /usr/local/bin/garm-cli
+COPY --from=garm-build /src/bin/garm /usr/local/bin/garm
+COPY --from=garm-build /src/bin/garm-cli /usr/local/bin/garm-cli
 
 # Provider install (wheel built in provider stage)
 COPY --from=provider-build /src/dist/*.whl /tmp/
