@@ -2,27 +2,30 @@
 # Combined GARM controller + Proxmox external provider
 # This image runs garm as the primary process and bundles the provider binary.
 
+FROM debian:bookworm-slim AS garm-bin
 ARG GARM_VERSION=v0.1.6
-FROM ghcr.io/cloudbase/garm:${GARM_VERSION} AS garm-bin
+RUN apt-get update && apt-get install -y curl tar && rm -rf /var/lib/apt/lists/*
+RUN curl -sL https://github.com/cloudbase/garm/releases/download/${GARM_VERSION}/garm-linux-amd64.tgz | tar -xz -C /usr/local/bin
+RUN curl -sL https://github.com/cloudbase/garm/releases/download/${GARM_VERSION}/garm-cli-linux-amd64.tgz | tar -xz -C /usr/local/bin
 
-FROM ghcr.io/astral-sh/uv:alpine AS provider-build
+FROM ghcr.io/astral-sh/uv:debian-slim AS provider-build
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md /src/
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src /src/src
 RUN uv build --wheel
 
-FROM python:3.14-alpine
+FROM python:3.14-slim-bookworm
 LABEL org.opencontainers.image.source="https://github.com/cloudbase/garm"
 LABEL org.opencontainers.image.title="garm-proxmox-combined"
 LABEL org.opencontainers.image.description="GARM controller with bundled Proxmox external provider"
 
-RUN apk add --no-cache ca-certificates tini openssl libffi
+RUN apt-get update && apt-get install -y ca-certificates tini openssl libffi8 && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/garm
 
 # GARM binary
-COPY --from=garm-bin /bin/garm /usr/local/bin/garm
-COPY --from=garm-bin /bin/garm-cli /usr/local/bin/garm-cli
+COPY --from=garm-bin /usr/local/bin/garm /usr/local/bin/garm
+COPY --from=garm-bin /usr/local/bin/garm-cli /usr/local/bin/garm-cli
 
 # Provider install (wheel built in provider stage)
 COPY --from=provider-build /src/dist/*.whl /tmp/
