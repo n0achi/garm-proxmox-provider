@@ -114,14 +114,21 @@ class PVEClient:
         The ``cluster/resources?type=vm`` endpoint returns both types; each
         resource carries a ``type`` field indicating which it is.
         """
-        vmid_int = int(vmid)
+        vmid_int = None
+        try:
+            vmid_int = int(vmid)
+        except (ValueError, TypeError):
+            pass
+
         try:
             resources = self._prox.cluster.resources.get(type="vm")
         except Exception as exc:
             logger.warning("Failed to query cluster resources: %s", exc)
             return None
         for res in resources:
-            if res.get("vmid") == vmid_int:
+            if (vmid_int is not None and res.get("vmid") == vmid_int) or (
+                vmid_int is None and res.get("name") == vmid
+            ):
                 node = res.get("node", self._defaults.node)
                 res_type = res.get("type", "qemu")
                 return node, res, res_type
@@ -261,7 +268,7 @@ class PVEClient:
         if found is None:
             raise RuntimeError(f"Instance {vmid} not found")
         node, res, res_type = found
-        vmid_int = int(vmid)
+        vmid_int = int(res.get("vmid"))
         config = self._get_config_for(node, vmid_int, res_type)
         meta = _parse_garm_meta(config.get("description")) or {}
         addresses = self._get_ips_for(node, vmid_int, res_type)
@@ -477,7 +484,7 @@ class PVEClient:
             logger.info("Instance %s not found; treating delete as no-op", vmid)
             return
         node, res, res_type = found
-        vmid_int = int(vmid)
+        vmid_int = int(res.get("vmid"))
 
         if res_type == "lxc":
             if res.get("status") == "running":
@@ -528,11 +535,12 @@ class PVEClient:
         found = self._find_instance(vmid)
         if found is None:
             raise RuntimeError(f"Instance {vmid} not found")
-        node, _, res_type = found
+        node, res, res_type = found
+        vmid_int = int(res.get("vmid"))
         if res_type == "lxc":
-            upid = self._prox.nodes(node).lxc(int(vmid)).status.start.post()
+            upid = self._prox.nodes(node).lxc(vmid_int).status.start.post()
         else:
-            upid = self._prox.nodes(node).qemu(int(vmid)).status.start.post()
+            upid = self._prox.nodes(node).qemu(vmid_int).status.start.post()
         self._wait_task(node, upid)
         return self.get_instance(vmid)
 
@@ -541,11 +549,12 @@ class PVEClient:
         found = self._find_instance(vmid)
         if found is None:
             raise RuntimeError(f"Instance {vmid} not found")
-        node, _, res_type = found
+        node, res, res_type = found
+        vmid_int = int(res.get("vmid"))
         if res_type == "lxc":
-            upid = self._prox.nodes(node).lxc(int(vmid)).status.shutdown.post()
+            upid = self._prox.nodes(node).lxc(vmid_int).status.shutdown.post()
         else:
-            upid = self._prox.nodes(node).qemu(int(vmid)).status.shutdown.post()
+            upid = self._prox.nodes(node).qemu(vmid_int).status.shutdown.post()
         self._wait_task(node, upid, timeout=120)
         return self.get_instance(vmid)
 
