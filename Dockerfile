@@ -5,10 +5,10 @@
 FROM golang:1.23-alpine AS garm-build
 ARG GARM_VERSION=v0.1.6
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git gcc musl-dev
 WORKDIR /src
 RUN git clone --depth 1 --branch ${GARM_VERSION} https://github.com/cloudbase/garm.git .
-RUN go build -o /out/garm ./cmd/garm
+RUN CGO_ENABLED=1 go build -o /out/garm ./cmd/garm
 
 FROM ghcr.io/astral-sh/uv:alpine AS provider-build
 WORKDIR /src
