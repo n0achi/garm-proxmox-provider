@@ -299,7 +299,3 @@ def setup_proxmox_cmd(
         garm_role=garm_role,
         garm_pool=garm_pool,
     )
-
-
-def main() -> None:
-    cli()
