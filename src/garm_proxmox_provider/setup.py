@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import click
+import urllib3
 from proxmoxer import ProxmoxAPI
 from proxmoxer.core import ResourceException
 
@@ -57,6 +58,9 @@ def create_garm_environment(
     garm_pool: str = "garm",
 ) -> None:
     """Create Proxmox user, role, permissions, and pool for GARM."""
+    if not verify_ssl:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     prox = ProxmoxAPI(
         host, user=root_user, password=root_password, verify_ssl=verify_ssl
     )

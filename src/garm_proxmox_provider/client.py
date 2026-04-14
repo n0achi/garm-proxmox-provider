@@ -8,6 +8,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+import urllib3
 from proxmoxer import ProxmoxAPI
 
 from .models import Address, Instance, InstanceStatus
@@ -71,6 +72,9 @@ class PVEClient:
     """Thin wrapper around proxmoxer.ProxmoxAPI providing GARM-oriented operations."""
 
     def __init__(self, cfg: Config) -> None:
+        if not cfg.pve.verify_ssl:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
         self._prox = ProxmoxAPI(
             cfg.pve.host,
             user=cfg.pve.user,
