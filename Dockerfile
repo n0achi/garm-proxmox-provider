@@ -22,6 +22,7 @@ WORKDIR /opt/garm
 
 # GARM binary
 COPY --from=garm-bin /bin/garm /usr/local/bin/garm
+COPY --from=garm-bin /bin/garm-cli /usr/local/bin/garm-cli
 
 # Provider install (wheel built in provider stage)
 COPY --from=provider-build /src/dist/*.whl /tmp/
