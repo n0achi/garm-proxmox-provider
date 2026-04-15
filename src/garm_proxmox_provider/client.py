@@ -8,7 +8,7 @@ import logging
 import re
 import time
 import urllib.parse
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import urllib3
 from proxmoxer import ProxmoxAPI
@@ -319,8 +319,8 @@ class PVEClient:
         memory_mb: int | None = None,
         node: str | None = None,
         template_vmid: int | None = None,
-        lxc_env_vars: dict[str, str] | None = None,
         image: str = "",
+        userdata_factory: Callable[[str], str] | None = None,
     ) -> Instance:
         """Clone template, configure and start instance; return Instance.
 
@@ -357,13 +357,14 @@ class PVEClient:
                         name=name,
                         pool_id=pool_id,
                         garm_meta=garm_meta,
-                        userdata=userdata,
+                        userdata=userdata_factory(str(vmid))
+                        if userdata_factory
+                        else userdata,
                         os_type=os_type,
                         os_arch=os_arch,
                         cores=cores,
                         memory_mb=memory_mb,
                         node=node,
-                        lxc_env_vars=lxc_env_vars or {},
                         lxc_unprivileged=image_cfg.lxc_unprivileged,
                     )
 
@@ -373,7 +374,9 @@ class PVEClient:
                     name=name,
                     pool_id=pool_id,
                     garm_meta=garm_meta,
-                    userdata=userdata,
+                    userdata=userdata_factory(str(vmid))
+                    if userdata_factory
+                    else userdata,
                     os_type=os_type,
                     os_arch=os_arch,
                     cores=cores,
@@ -453,15 +456,6 @@ class PVEClient:
 
         logger.info("Starting QEMU VM %d", vmid)
         upid = self._prox.nodes(node).qemu(vmid).status.start.post()
-        if userdata:
-            logger.info("Executing userdata script in LXC %d", vmid)
-            # Use Proxmox API exec to run the script
-            try:
-                self._prox.nodes(node).lxc(vmid).exec.post(
-                    command=["/bin/bash", "-c", userdata]
-                )
-            except Exception as exc:
-                logger.warning("Failed to execute userdata in LXC: %s", exc)
 
         return Instance(
             provider_id=str(vmid),
@@ -486,7 +480,6 @@ class PVEClient:
         cores: int,
         memory_mb: int,
         node: str,
-        lxc_env_vars: dict[str, str],
         lxc_unprivileged: bool,
     ) -> Instance:
         """Clone an LXC template, inject env vars, start and return Instance."""
@@ -505,19 +498,12 @@ class PVEClient:
         )
         self._wait_task(node, upid)
 
-        # Update GARM_PROVIDER_ID now that we know the real VMID
-        env_vars = dict(lxc_env_vars)
-        env_vars["GARM_PROVIDER_ID"] = str(vmid)
-
-        # Build config — inject env vars as raw LXC config lines
         config_update: dict[str, Any] = {
             "cores": cores,
             "memory": memory_mb,
             "description": garm_meta,
             "unprivileged": int(lxc_unprivileged),
         }
-        for i, (key, value) in enumerate(env_vars.items()):
-            config_update[f"lxc[{i}]"] = f"lxc.environment: {key}={value}"
 
         self._prox.nodes(node).lxc(vmid).config.put(**config_update)
 

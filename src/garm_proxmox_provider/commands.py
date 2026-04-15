@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import sys
 from typing import Any, NoReturn
 
 from .client import PVEClient
-from .cloud_init import render_lxc_env_vars, render_userdata
+from .cloud_init import render_userdata
 from .config import ConfigError, load_config
 from .models import BootstrapInstance, Instance, InstanceStatus
 
@@ -68,16 +67,12 @@ def create_instance(config_path: str, bootstrap_data: str) -> None:
     bootstrap = BootstrapInstance.from_dict(data)
     overrides = _apply_extra_specs(bootstrap, cfg)
 
-    lxc_env_vars: dict[str, Any] | None = render_lxc_env_vars(
-        bootstrap=bootstrap,
-        provider_id="PLACEHOLDER",
-    )
-    # Use the userdata provided by GARM in the payload. If empty, fallback to generated.
-    userdata = bootstrap.userdata or render_userdata(
-        bootstrap=bootstrap,
-        provider_id="PLACEHOLDER",  # real VMID not known yet
-        defaults=cfg.cluster,
-    )
+    def factory(vid: str) -> str:
+        return bootstrap.userdata or render_userdata(
+            bootstrap=bootstrap,
+            provider_id=vid,
+            defaults=cfg.cluster,
+        )
 
     client = PVEClient(cfg)
     try:
@@ -85,39 +80,16 @@ def create_instance(config_path: str, bootstrap_data: str) -> None:
             name=bootstrap.name,
             controller_id=bootstrap.controller_id,
             pool_id=bootstrap.pool_id,
-            userdata=userdata,
+            userdata=bootstrap.userdata,
+            userdata_factory=factory,
             os_type=bootstrap.os_type,
             os_arch=bootstrap.os_arch,
             cores=overrides["cores"],
             memory_mb=overrides["memory_mb"],
             node=overrides["node"],
             template_vmid=overrides["template_vmid"],
-            lxc_env_vars=lxc_env_vars,
             image=bootstrap.image,
         )
-        # Re-render user-data with real provider_id for the snippet (QEMU only)
-        image_cfg = cfg.get_image(bootstrap.image)
-        if cfg.cluster.snippets_storage and image_cfg.type != "lxc":
-            userdata_final = bootstrap.userdata or render_userdata(
-                bootstrap=bootstrap,
-                provider_id=instance.provider_id,
-                defaults=cfg.cluster,
-            )
-            # Update snippet in place
-            snippet_name = f"garm-{instance.provider_id}.yml"
-            node = overrides["node"]
-            try:
-                client._prox.nodes(node).storage(
-                    cfg.cluster.snippets_storage
-                ).upload.post(
-                    content="snippets",
-                    filename=snippet_name,
-                    file=io.BytesIO(userdata_final.encode("utf-8")),
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to update cloud-init snippet with real VMID: %s", exc
-                )
     except Exception as exc:
         err_instance = Instance(
             provider_id="",

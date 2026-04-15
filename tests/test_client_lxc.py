@@ -227,16 +227,6 @@ def test_create_instance_lxc_clones_lxc_template() -> None:
         controller_id="ctrl-1",
         pool_id="pool-1",
         image="default",
-        lxc_env_vars={
-            "GARM_METADATA_URL": "https://garm.example.com/api/v1/metadata",
-            "GARM_INSTANCE_TOKEN": "tok-abc",
-            "GARM_REPO_URL": "https://github.com/org/repo",
-            "GARM_LABELS": "self-hosted",
-            "GARM_NAME": "runner-lxc-1",
-            "GARM_CALLBACK_URL": "https://garm.example.com/api/v1/callback",
-            "GARM_PROVIDER_ID": "PLACEHOLDER",
-            "GARM_FORGE_TYPE": "github",
-        },
     )
 
     assert inst.provider_id == "201"
@@ -256,63 +246,6 @@ def test_create_instance_lxc_clones_lxc_template() -> None:
 
     # QEMU endpoints were never touched
     mock_prox.nodes.return_value.qemu.assert_not_called()
-
-
-def test_create_instance_lxc_env_vars_injected() -> None:
-    client, mock_prox = _make_client()
-    mock_prox.cluster.resources.get.return_value = [
-        {"vmid": 9100, "node": "pve1", "type": "lxc", "name": "default"}
-    ]
-
-    mock_prox.cluster.nextid.get.return_value = 202
-    mock_prox.nodes.return_value.lxc.return_value.clone.post.return_value = (
-        "UPID:pve1:ok"
-    )
-    mock_prox.nodes.return_value.tasks.return_value.status.get.return_value = {
-        "status": "stopped",
-        "exitstatus": "OK",
-    }
-    mock_prox.nodes.return_value.lxc.return_value.config.put.return_value = None
-    mock_prox.nodes.return_value.lxc.return_value.status.start.post.return_value = (
-        "UPID:pve1:ok"
-    )
-
-    env_vars = {
-        "GARM_METADATA_URL": "https://garm.example.com/api/v1/metadata",
-        "GARM_INSTANCE_TOKEN": "tok-xyz",
-        "GARM_REPO_URL": "https://github.com/org/repo",
-        "GARM_LABELS": "self-hosted",
-        "GARM_NAME": "runner-env-test",
-        "GARM_CALLBACK_URL": "https://garm.example.com/api/v1/callback",
-        "GARM_PROVIDER_ID": "PLACEHOLDER",
-        "GARM_FORGE_TYPE": "github",
-    }
-    client.create_instance(
-        name="runner-env-test",
-        controller_id="ctrl-1",
-        pool_id="pool-1",
-        image="default",
-        lxc_env_vars=env_vars,
-    )
-
-    put_kwargs = (
-        mock_prox.nodes.return_value.lxc.return_value.config.put.call_args.kwargs
-    )
-
-    # Should have lxc[N] keys for environment injection
-    lxc_keys = [k for k in put_kwargs if k.startswith("lxc[")]
-    assert len(lxc_keys) == len(env_vars)
-
-    # GARM_PROVIDER_ID should be replaced with the real VMID
-    env_values = list(put_kwargs.values())
-    provider_id_line = next(
-        v for v in env_values if isinstance(v, str) and "GARM_PROVIDER_ID" in v
-    )
-    assert "202" in provider_id_line
-    assert "PLACEHOLDER" not in provider_id_line
-
-    # unprivileged should be set
-    assert put_kwargs.get("unprivileged") == 1
 
 
 def test_create_instance_lxc_privileged_container() -> None:
@@ -339,7 +272,6 @@ def test_create_instance_lxc_privileged_container() -> None:
         controller_id="ctrl-1",
         pool_id="pool-1",
         image="default",
-        lxc_env_vars={"GARM_PROVIDER_ID": "PLACEHOLDER"},
     )
 
     put_kwargs = (
