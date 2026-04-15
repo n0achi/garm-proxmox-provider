@@ -60,8 +60,8 @@ Status key: ✅ done · 🚧 in progress · ⏳ pending
 
 ## Config expectations (summary)
 - `[pve]`: `host`, `user`, `token_name`, `token_value`, `verify_ssl`.
-- `[defaults]`: `node`, `storage`, `pool`, `template_vmid` (optional), `cores`, `memory_mb`, `disk_gb`, `bridge`, `ssh_public_key` (optional).
-- Allow per-pool overrides via `extra_specs` mapping (e.g., `cores`, `memory_mb`, `disk_gb`, `node`).
+- `[defaults]`: `node`, `storage`, `pool`, `template_vmid` (optional), `cores`, `memory_mb`, `bridge`, `ssh_public_key` (optional).
+- Allow per-pool overrides via `extra_specs` mapping (e.g., `cores`, `memory_mb`, `node`).
 
 ## Definition of Done (MVP)
 - Running `GARM_COMMAND=ListInstances garm-proxmox-provider` works against a PVE with valid config.

@@ -73,7 +73,6 @@ storage = "local-lvm"        # Storage for clone disks
 [flavors.default]
 cores = 4
 memory_mb = 4096
-disk_gb = 20
 
 # Map GARM image names to Proxmox templates
 [images.ubuntu-slim-runner]

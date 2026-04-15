@@ -30,7 +30,6 @@ bridge = "vmbr0"
 [flavors.default]
 cores = 2
 memory_mb = 4096
-disk_gb = 20
 """
 
 BOOTSTRAP_PAYLOAD = {

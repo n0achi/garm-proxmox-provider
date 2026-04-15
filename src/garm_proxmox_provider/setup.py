@@ -31,7 +31,7 @@ def lint_config(config_path: str) -> None:
             click.echo("Flavors:")
             for flavor_name, flavor in cfg.flavors.items():
                 click.echo(
-                    f"  - {flavor_name}: {flavor.cores} cores, {flavor.memory_mb} MB RAM, {flavor.disk_gb} GB disk"
+                    f"  - {flavor_name}: {flavor.cores} cores, {flavor.memory_mb} MB RAM"
                 )
         if cfg.images:
             click.echo("Images:")

@@ -26,7 +26,6 @@ bridge = "vmbr0"
 [flavors.default]
 cores = 2
 memory_mb = 4096
-disk_gb = 20
 """
 
 FULL_TOML = """\
@@ -50,7 +49,6 @@ ssh_public_key = "ssh-ed25519 AAAA test@example.com"
 [flavors.default]
 cores = 2
 memory_mb = 4096
-disk_gb = 20
 """
 
 
@@ -73,7 +71,6 @@ def test_load_minimal_config(tmp_path: Path) -> None:
     assert cfg.cluster.storage == "local-lvm"
     assert cfg.flavors["default"].cores == 2
     assert cfg.flavors["default"].memory_mb == 4096
-    assert cfg.flavors["default"].disk_gb == 20
     assert cfg.cluster.bridge == "vmbr0"
 
 
@@ -160,7 +157,7 @@ node = "pve1"
 [images.win]
 """
     cfg = load_config(_write_config(tmp_path, toml))
-    assert 'default' in cfg.images
+    assert "default" in cfg.images
 
 
 def test_invalid_image_type_raises(tmp_path: Path) -> None:
@@ -208,6 +205,6 @@ type = "lxc"
 lxc_unprivileged = false
 """
     cfg = load_config(_write_config(tmp_path, toml))
-    assert 'default' in cfg.images
+    assert "default" in cfg.images
     assert cfg.images["default"].type == "lxc"
     assert cfg.images["default"].lxc_unprivileged is False

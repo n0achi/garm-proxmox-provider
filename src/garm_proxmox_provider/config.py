@@ -33,7 +33,6 @@ class ClusterConfig:
 class FlavorConfig:
     cores: int = 2
     memory_mb: int = 4096
-    disk_gb: int = 20
 
 
 @dataclass
@@ -121,7 +120,6 @@ def load_config(path: str) -> Config:
         flavors[key] = FlavorConfig(
             cores=int(val.get("cores", 2)),
             memory_mb=int(val.get("memory_mb", 4096)),
-            disk_gb=int(val.get("disk_gb", 20)),
         )
 
     # --- Images section ---------------------------------------------------
@@ -130,7 +128,6 @@ def load_config(path: str) -> Config:
     for key, val in images_data.items():
         if not isinstance(val, dict):
             raise ConfigError(f"[images].{key} must be a dictionary")
-
 
         type_val = str(val.get("type", "vm"))
         if type_val not in ("vm", "lxc"):
