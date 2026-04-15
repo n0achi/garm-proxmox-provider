@@ -85,7 +85,7 @@ def create_garm_environment(
         "VM.Config.CPU VM.Config.Disk VM.Config.HWType VM.Config.Memory "
         "VM.Config.Network VM.Config.Options VM.Console VM.Migrate "
         "VM.PowerMgmt Pool.Allocate Datastore.AllocateSpace Datastore.Audit "
-        "SDN.Use"
+        "SDN.Use VM.GuestAgent.Audit VM.GuestAgent.Execute VM.GuestAgent.Unrestricted"
     )
     try:
         prox.access.roles.post(roleid=garm_role, privs=privileges)
