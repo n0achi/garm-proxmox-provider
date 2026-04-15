@@ -78,9 +78,13 @@ def cli(ctx: click.Context, config: str) -> None:
         kwargs = {}
         for param in subcommand.params:
             if param.name and getattr(param, "envvar", None):
-                val = os.environ.get(param.envvar)
-                if val is not None:
-                    kwargs[param.name] = val
+                envvar = param.envvar
+                if isinstance(envvar, list):
+                    envvar = envvar[0]
+                if envvar:
+                    val = os.environ.get(envvar)
+                    if val is not None:
+                        kwargs[param.name] = val
         ctx.invoke(subcommand, **kwargs)
 
 

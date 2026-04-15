@@ -1,16 +1,23 @@
 # GARM Proxmox Provider
 
-A fully compliant external provider for [GARM](https://github.com/cloudbase/garm) that provisions GitHub/Gitea runners on Proxmox VE. 
+A fully compliant external provider for [GARM](https://github.com/cloudbase/garm) that provisions Gi
+tHub/Gitea runners on Proxmox VE.
 
-This provider supports creating runners as either **QEMU Virtual Machines** (via cloud-init) or **LXC Containers** (via environment variables), and seamlessly integrates with GARM's lifecycle management.
+This provider supports creating runners as either **QEMU Virtual Machines** (via cloud-init) or **LX
+C Containers** (via environment variables), and seamlessly integrates with GARM's lifecycle management.
 
 ## Features
 
-- **Full GARM Lifecycle Support**: Implements `CreateInstance`, `DeleteInstance`, `GetInstance`, `ListInstances`, `RemoveAllInstances`, `Start`, and `Stop`.
-- **Dual Runtime Modes**: Support for both QEMU VMs (`instance_type = "vm"`) and unprivileged LXC containers (`instance_type = "lxc"`).
-- **Per-OS Templates**: Dynamically route runner creation to specific Proxmox templates based on OS and Architecture (e.g., `linux/amd64` vs `windows/amd64`).
-- **Automated Setup Utility**: Built-in CLI tool to automatically configure Proxmox roles, users, pools, and API tokens with the principle of least privilege.
-- **CLI Debugging Tools**: Explicit subcommands for linting configuration, testing API connections, and listing cluster templates.
+- **Full GARM Lifecycle Support**: Implements `CreateInstance`, `DeleteInstance`, `GetInstance`, `Li
+stInstances`, `RemoveAllInstances`, `Start`, and `Stop`.
+- **Dual Runtime Modes**: Support for both QEMU VMs (`instance_type = "vm"`) and unprivileged LXC co
+ntainers (`instance_type = "lxc"`).
+- **Per-OS Templates**: Dynamically route runner creation to specific Proxmox templates based on OS 
+and Architecture (e.g., `linux/amd64` vs `windows/amd64`).
+- **Automated Setup Utility**: Built-in CLI tool to automatically configure Proxmox roles, users, po
+ols, and API tokens with the principle of least privilege.
+- **CLI Debugging Tools**: Explicit subcommands for linting configuration, testing API connections, 
+and listing cluster templates.
 
 ## Installation
 
@@ -29,7 +36,8 @@ Once installed, the `garm-proxmox-provider` binary will be available in your env
 
 ## Proxmox Setup & Bootstrapping
 
-Before using the provider, Proxmox needs a dedicated user, role, and resource pool. We provide a fully automated setup utility that creates these with the exact minimum privileges required.
+Before using the provider, Proxmox needs a dedicated user, role, and resource pool. We provide a ful
+ly automated setup utility that creates these with the exact minimum privileges required.
 
 ```bash
 garm-proxmox-provider setup-proxmox \
@@ -39,11 +47,13 @@ garm-proxmox-provider setup-proxmox \
     --garm-pool "garm"
 ```
 
-The utility will prompt for your Proxmox root password, configure the cluster, and output a ready-to-use snippet for your `config.toml` containing the newly generated API token.
+The utility will prompt for your Proxmox root password, configure the cluster, and output a ready-to
+-use snippet for your `config.toml` containing the newly generated API token.
 
 ## Configuration
 
-The provider expects a TOML configuration file. The path to this file is passed via the `GARM_PROVIDER_CONFIG_FILE` environment variable or the `--config` CLI flag.
+The provider expects a TOML configuration file. The path to this file is passed via the `GARM_PROVID
+ER_CONFIG_FILE` environment variable or the `--config` CLI flag.
 
 ```toml
 # Example: /etc/garm/garm-provider-proxmox.toml
@@ -78,28 +88,39 @@ type = "vm"
 
 ## CLI Utilities
 
-While GARM interacts with the provider via environment variables, the binary includes explicit subcommands to help you manage and debug your setup locally.
+While GARM interacts with the provider via environment variables, the binary includes explicit subco
+mmands to help you manage and debug your setup locally.
 
 ### 1. Lint Configuration
-Validates your `config.toml` file to catch missing fields, syntax errors, or logical misconfigurations.
+
+Validates your `config.toml` file to catch missing fields, syntax errors, or logical misconfiguratio
+ns.
+
 ```bash
 garm-proxmox-provider lint-config --config /path/to/config.toml
 ```
 
 ### 2. Test Connection
+
 Verifies that the provider can successfully authenticate and communicate with the Proxmox API.
+
 ```bash
 garm-proxmox-provider test-connection --config /path/to/config.toml
 ```
 
 ### 3. List Templates
-Scans the Proxmox cluster and lists all available templates that match your configured `instance_type` (VM or LXC).
+
+Scans the Proxmox cluster and lists all available templates that match your configured `instance_typ
+e` (VM or LXC).
+
 ```bash
 garm-proxmox-provider list-templates --config /path/to/config.toml
 ```
 
 ### 4. Manual Operations
+
 You can manually trigger any GARM operation for testing purposes:
+
 ```bash
 # Get details of a specific runner
 garm-proxmox-provider get-instance --config ./config.toml --instance-id 105
@@ -124,7 +145,8 @@ setup_script = "/path/to/garm-proxmox-provider"
 config_file = "/etc/garm/garm-provider-proxmox.toml"
 ```
 
-The provider maintains 100% compatibility with GARM's `GARM_COMMAND` environment variable dispatch model. When GARM invokes the binary without CLI arguments, the provider will seamlessly read `GARM_COMMAND` and route it to the correct internal handler.
+The provider maintains 100% compatibility with GARM's `GARM_COMMAND` environment variable dispatch m
+odel. When GARM invokes the binary without CLI arguments, the provider will seamlessly read `GARM_COMMAND` and route it to the correct internal handler.
 
 ## Development
 

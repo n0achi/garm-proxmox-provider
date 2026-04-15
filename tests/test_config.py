@@ -160,6 +160,7 @@ node = "pve1"
 [images.win]
 """
     cfg = load_config(_write_config(tmp_path, toml))
+    assert 'default' in cfg.images
 
 
 def test_invalid_image_type_raises(tmp_path: Path) -> None:
@@ -207,5 +208,6 @@ type = "lxc"
 lxc_unprivileged = false
 """
     cfg = load_config(_write_config(tmp_path, toml))
+    assert 'default' in cfg.images
     assert cfg.images["default"].type == "lxc"
     assert cfg.images["default"].lxc_unprivileged is False

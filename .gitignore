@@ -186,3 +186,6 @@ result-*
 .direnv
 
 .pre-commit-config.yaml
+
+# Provider config
+garm-provider-proxmox.toml
