@@ -432,6 +432,9 @@ class PVEClient:
             "description": garm_meta,
             "ipconfig0": "ip=dhcp",
         }
+        if os_type.lower() == "linux":
+            config_update["ciuser"] = "runner"
+            config_update["cipassword"] = "runner"
         if d.ssh_public_key:
             from urllib.parse import quote
 
