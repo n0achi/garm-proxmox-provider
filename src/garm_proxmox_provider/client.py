@@ -440,27 +440,41 @@ class PVEClient:
 
             config_update["sshkeys"] = quote(d.ssh_public_key.strip(), safe="")
 
-        snippets_storage = d.snippets_storage or "local"
-        if userdata:
-            snippet_name = f"garm-{vmid}.yml"
-            userdata_bytes = userdata.encode("utf-8")
-            try:
-                self._prox.nodes(node).storage(snippets_storage).upload.post(
-                    content="snippets",
-                    filename=snippet_name,
-                    file=io.BytesIO(userdata_bytes),
-                )
-            except Exception as exc:
-                logger.warning("Failed to upload cloud-init snippet: %s", exc)
-            else:
-                config_update["cicustom"] = (
-                    f"user={snippets_storage}:snippets/{snippet_name}"
-                )
-
         self._prox.nodes(node).qemu(vmid).config.post(**config_update)
 
         logger.info("Starting QEMU VM %d", vmid)
         upid = self._prox.nodes(node).qemu(vmid).status.start.post()
+        if userdata:
+            logger.info("Executing userdata script via QEMU Guest Agent in VM %d", vmid)
+            import time
+
+            for _ in range(30):
+                try:
+                    self._prox.nodes(node).qemu(vmid).agent.ping.post()
+                    break
+                except Exception:
+                    time.sleep(2)
+            else:
+                logger.warning("QEMU Guest Agent not ready in VM %d", vmid)
+
+            try:
+                if os_type.lower() == "windows":
+                    self._prox.nodes(node).qemu(vmid).agent.exec.post(
+                        command=[
+                            "powershell.exe",
+                            "-NonInteractive",
+                            "-ExecutionPolicy",
+                            "Bypass",
+                            "-Command",
+                            userdata,
+                        ]
+                    )
+                else:
+                    self._prox.nodes(node).qemu(vmid).agent.exec.post(
+                        command=["/bin/bash", "-c", userdata]
+                    )
+            except Exception as exc:
+                logger.warning("Failed to execute userdata via QGA: %s", exc)
 
         return Instance(
             provider_id=str(vmid),

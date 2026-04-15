@@ -73,7 +73,7 @@ bash /opt/garm/scripts/startup-linux.sh
 
 # ---------------------------------------------------------------------------
 # Windows scripts — runner binary pre-installed by Packer image
-# cloudbase-init processes #ps1_sysnative as a 64-bit PowerShell script.
+# Executed via QEMU Guest Agent.
 # ---------------------------------------------------------------------------
 
 
@@ -86,7 +86,6 @@ def _render_windows_userdata(
     forge_type = "gitea" if _is_gitea(bootstrap) else "github"
 
     return f"""\
-#ps1_sysnative
 $ErrorActionPreference = 'Stop'
 
 $env:METADATA_URL = "{bootstrap.metadata_url.rstrip("/")}"
