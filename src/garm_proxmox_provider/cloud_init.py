@@ -86,6 +86,7 @@ def _render_windows_userdata(
     forge_type = "gitea" if _is_gitea(bootstrap) else "github"
 
     return f"""\
+#ps1_sysnative
 $ErrorActionPreference = 'Stop'
 
 $env:METADATA_URL = "{bootstrap.metadata_url.rstrip("/")}"

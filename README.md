@@ -1,23 +1,16 @@
 # GARM Proxmox Provider
 
-A fully compliant external provider for [GARM](https://github.com/cloudbase/garm) that provisions Gi
-tHub/Gitea runners on Proxmox VE.
+A fully compliant external provider for [GARM](https://github.com/cloudbase/garm) that provisions GitHub/Gitea runners on Proxmox VE.
 
-This provider supports creating runners as either **QEMU Virtual Machines** (via cloud-init) or **LX
-C Containers** (via environment variables), and seamlessly integrates with GARM's lifecycle management.
+This provider supports creating runners as either **QEMU Virtual Machines** (via cloud-init) or **LXC Containers** (via environment variables), and seamlessly integrates with GARM's lifecycle management.
 
 ## Features
 
-- **Full GARM Lifecycle Support**: Implements `CreateInstance`, `DeleteInstance`, `GetInstance`, `Li
-stInstances`, `RemoveAllInstances`, `Start`, and `Stop`.
-- **Dual Runtime Modes**: Support for both QEMU VMs (`instance_type = "vm"`) and unprivileged LXC co
-ntainers (`instance_type = "lxc"`).
-- **Per-OS Templates**: Dynamically route runner creation to specific Proxmox templates based on OS 
-and Architecture (e.g., `linux/amd64` vs `windows/amd64`).
-- **Automated Setup Utility**: Built-in CLI tool to automatically configure Proxmox roles, users, po
-ols, and API tokens with the principle of least privilege.
-- **CLI Debugging Tools**: Explicit subcommands for linting configuration, testing API connections, 
-and listing cluster templates.
+- **Full GARM Lifecycle Support**: Implements `CreateInstance`, `DeleteInstance`, `GetInstance`, `ListInstances`, `RemoveAllInstances`, `Start`, and `Stop`.
+- **Dual Runtime Modes**: Support for both QEMU VMs (`instance_type = "vm"`) and unprivileged LXC containers (`instance_type = "lxc"`).
+- **Per-OS Templates**: Dynamically route runner creation to specific Proxmox templates based on OS and Architecture (e.g., `linux/amd64` vs `windows/amd64`).
+- **Automated Setup Utility**: Built-in CLI tool to automatically configure Proxmox roles, users, pools, and API tokens with the principle of least privilege.
+- **CLI Debugging Tools**: Explicit subcommands for linting configuration, testing API connections, and listing cluster templates.
 
 ## Installation
 
@@ -36,8 +29,7 @@ Once installed, the `garm-proxmox-provider` binary will be available in your env
 
 ## Proxmox Setup & Bootstrapping
 
-Before using the provider, Proxmox needs a dedicated user, role, and resource pool. We provide a ful
-ly automated setup utility that creates these with the exact minimum privileges required.
+Before using the provider, Proxmox needs a dedicated user, role, and resource pool. We provide a fully automated setup utility that creates these with the exact minimum privileges required.
 
 ```bash
 garm-proxmox-provider setup-proxmox \
@@ -47,13 +39,11 @@ garm-proxmox-provider setup-proxmox \
     --garm-pool "garm"
 ```
 
-The utility will prompt for your Proxmox root password, configure the cluster, and output a ready-to
--use snippet for your `config.toml` containing the newly generated API token.
+The utility will prompt for your Proxmox root password, configure the cluster, and output a ready-to-use snippet for your `config.toml` containing the newly generated API token.
 
 ## Configuration
 
-The provider expects a TOML configuration file. The path to this file is passed via the `GARM_PROVID
-ER_CONFIG_FILE` environment variable or the `--config` CLI flag.
+The provider expects a TOML configuration file. The path to this file is passed via the `GARM_PROVIDER_CONFIG_FILE` environment variable or the `--config` CLI flag.
 
 ```toml
 # Example: /etc/garm/garm-provider-proxmox.toml
@@ -87,13 +77,11 @@ type = "vm"
 
 ## CLI Utilities
 
-While GARM interacts with the provider via environment variables, the binary includes explicit subco
-mmands to help you manage and debug your setup locally.
+While GARM interacts with the provider via environment variables, the binary includes explicit subcommands to help you manage and debug your setup locally.
 
 ### 1. Lint Configuration
 
-Validates your `config.toml` file to catch missing fields, syntax errors, or logical misconfiguratio
-ns.
+Validates your `config.toml` file to catch missing fields, syntax errors, or logical misconfigurations.
 
 ```bash
 garm-proxmox-provider lint-config --config /path/to/config.toml
@@ -109,8 +97,7 @@ garm-proxmox-provider test-connection --config /path/to/config.toml
 
 ### 3. List Templates
 
-Scans the Proxmox cluster and lists all available templates that match your configured `instance_typ
-e` (VM or LXC).
+Scans the Proxmox cluster and lists all available templates that match your configured `instance_type` (VM or LXC).
 
 ```bash
 garm-proxmox-provider list-templates --config /path/to/config.toml
@@ -144,8 +131,7 @@ setup_script = "/path/to/garm-proxmox-provider"
 config_file = "/etc/garm/garm-provider-proxmox.toml"
 ```
 
-The provider maintains 100% compatibility with GARM's `GARM_COMMAND` environment variable dispatch m
-odel. When GARM invokes the binary without CLI arguments, the provider will seamlessly read `GARM_COMMAND` and route it to the correct internal handler.
+The provider maintains 100% compatibility with GARM's `GARM_COMMAND` environment variable dispatch model. When GARM invokes the binary without CLI arguments, the provider will seamlessly read `GARM_COMMAND` and route it to the correct internal handler.
 
 ## Development
 
@@ -158,18 +144,16 @@ All core logic is decoupled from environment variables, making it highly testabl
 
 ## Logging
 
-The provider logs to **stderr** by default (safe for Docker). Log behaviour is controlled entirely
-through environment variables so no config-file changes are needed.
+The provider logs to **stderr** by default (safe for Docker). Log behaviour is controlled entirely through environment variables so no config-file changes are needed.
 
-| Variable | Default | Description |
-|---|---|---|
-| `GARM_LOG_LEVEL` | `WARNING` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `GARM_DEBUG` | _(unset)_ | Legacy flag — if set (any value) and `GARM_LOG_LEVEL` is absent, maps to `DEBUG` |
-| `GARM_LOG_FILE` | _(unset)_ | Full path for a rotating log file (10 MB × 5 backups). Directory is created automatically. |
-| `GARM_LOG_JSON` | _(unset)_ | Set to `1`, `true`, or `yes` to emit JSON-formatted log lines (requires `python-json-logger`). Falls back to text if unavailable. |
+| Variable         | Default   | Description                                                                                                                       |
+| ---------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `GARM_LOG_LEVEL` | `WARNING` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR`                                                                                    |
+| `GARM_DEBUG`     | _(unset)_ | Legacy flag — if set (any value) and `GARM_LOG_LEVEL` is absent, maps to `DEBUG`                                                  |
+| `GARM_LOG_FILE`  | _(unset)_ | Full path for a rotating log file (10 MB × 5 backups). Directory is created automatically.                                        |
+| `GARM_LOG_JSON`  | _(unset)_ | Set to `1`, `true`, or `yes` to emit JSON-formatted log lines (requires `python-json-logger`). Falls back to text if unavailable. |
 
-**Docker recommendation** — rely on container stdout/stderr for log capture. Only set
-`GARM_LOG_FILE` when you mount a host directory for persistent logs:
+**Docker recommendation** — rely on container stdout/stderr for log capture. Only set `GARM_LOG_FILE` when you mount a host directory for persistent logs:
 
 ```bash
 # Debug in a container (logs go to stderr / Docker log driver):
@@ -182,9 +166,7 @@ docker run -e GARM_LOG_FILE=/var/log/garm/provider.log \
 
 ## QGA SSH Fallback (opt-in)
 
-By default the provider executes the bootstrap script inside QEMU VMs via the
-**QEMU Guest Agent** (`agent.exec`). When the guest agent is unavailable you can
-enable an opt-in fallback that runs `qm guest exec` on the Proxmox host over SSH.
+By default the provider executes the bootstrap script inside QEMU VMs via the **QEMU Guest Agent** (`agent.exec`). When the guest agent is unavailable you can enable an opt-in fallback that runs `qm guest exec` on the Proxmox host over SSH.
 
 Add these optional keys to your `[cluster]` section:
 
@@ -222,14 +204,17 @@ pytest tests/test_e2e_local.py::test_create_instance_qemu_executes_userdata_via_
 
 ## Documentation
 
-Build the HTML docs locally:
+Build the HTML documentation locally:
 
 ```bash
-pip install -r docs/requirements.txt
-sphinx-build -b html docs docs/_build/html
+# Sync development dependencies (this installs Sphinx, the theme and extensions via uv)
+uv sync --dev
+
+# Build the HTML documentation using the uv-managed environment
+uv run sphinx-build -b html docs docs/_build/html
 ```
 
-Then open `docs/_build/html/index.html`.  The docs use the
+Then open `docs/_build/html/index.html`. The docs use the
 [furo](https://github.com/pradyunsg/furo) theme and include Mermaid architecture
 diagrams.
 
@@ -249,4 +234,3 @@ host with enough privilege to run `qm`. This carries the following implications:
 - Consider restricting the key to `command="qm guest exec ..."` in
   `~/.ssh/authorized_keys` on the Proxmox node to limit blast radius.
 - This fallback is entirely **opt-in** and disabled by default.
-
