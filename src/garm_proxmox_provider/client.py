@@ -28,6 +28,9 @@ _GARM_META_MARKER = "__garm__"
 _QGA_PING_ATTEMPTS = 30
 _QGA_PING_INTERVAL = 2
 
+# qm SSH fallback timeout (seconds)
+_QM_SSH_TIMEOUT = 300
+
 
 def _parse_garm_meta(description: str | None) -> dict[str, str] | None:
     """Extract the GARM metadata dict from a VM description field, or None."""
@@ -589,7 +592,7 @@ class PVEClient:
         ]
         logger.info("qm SSH fallback: executing userdata for VM %d via SSH", vmid)
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=_QM_SSH_TIMEOUT)
             logger.info(
                 "qm SSH fallback result for VM %d: rc=%d stdout=%r stderr=%r",
                 vmid,
@@ -627,7 +630,19 @@ class PVEClient:
                     else urllib.parse.urlparse(f"https://{self._config.pve.host}")
                 )
                 pve_host = parsed.hostname or self._config.pve.host
-                self._exec_via_qm_ssh(node, vmid, userdata, pve_host=str(pve_host))
+                ok = self._exec_via_qm_ssh(node, vmid, userdata, pve_host=str(pve_host))
+                if not ok:
+                    logger.error(
+                        "Bootstrap via qm SSH fallback also failed for VM %d; "
+                        "runner may not be registered",
+                        vmid,
+                    )
+            else:
+                logger.error(
+                    "QGA not ready for VM %d and qm_ssh_fallback is disabled; "
+                    "runner bootstrap was skipped",
+                    vmid,
+                )
             return
 
         try:
@@ -668,7 +683,13 @@ class PVEClient:
                     else urllib.parse.urlparse(f"https://{self._config.pve.host}")
                 )
                 pve_host = parsed.hostname or self._config.pve.host
-                self._exec_via_qm_ssh(node, vmid, userdata, pve_host=str(pve_host))
+                ok = self._exec_via_qm_ssh(node, vmid, userdata, pve_host=str(pve_host))
+                if not ok:
+                    logger.error(
+                        "Bootstrap via qm SSH fallback also failed for VM %d; "
+                        "runner may not be registered",
+                        vmid,
+                    )
 
     def delete_instance(self, vmid: str | int) -> None:
         """Stop and destroy instance *vmid*; no-op if the instance does not exist."""

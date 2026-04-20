@@ -10,6 +10,10 @@ import click
 
 from . import commands
 
+# Rotating file handler defaults (overridable via env vars in a future enhancement)
+_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+_LOG_FILE_BACKUP_COUNT = 5
+
 LEGACY_COMMAND_MAP = {
     "CreateInstance": "create-instance",
     "DeleteInstance": "delete-instance",
@@ -66,7 +70,7 @@ def _setup_logging() -> None:
                     os.makedirs(dirname, exist_ok=True)
             except Exception:
                 pass
-            fh = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
+            fh = RotatingFileHandler(log_file, maxBytes=_LOG_FILE_MAX_BYTES, backupCount=_LOG_FILE_BACKUP_COUNT)
             fh.setFormatter(formatter)
             root.addHandler(fh)
 
