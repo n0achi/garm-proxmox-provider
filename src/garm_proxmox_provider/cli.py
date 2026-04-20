@@ -10,6 +10,10 @@ import click
 
 from . import commands
 
+# Rotating file handler defaults (overridable via env vars in a future enhancement)
+_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+_LOG_FILE_BACKUP_COUNT = 5
+
 LEGACY_COMMAND_MAP = {
     "CreateInstance": "create-instance",
     "DeleteInstance": "delete-instance",
@@ -22,12 +26,55 @@ LEGACY_COMMAND_MAP = {
 
 
 def _setup_logging() -> None:
-    level = logging.DEBUG if os.environ.get("GARM_DEBUG") else logging.WARNING
-    logging.basicConfig(
-        stream=sys.stderr,
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    """Configure root logger from environment variables.
+
+    Supported env vars:
+      GARM_LOG_LEVEL  — e.g. DEBUG / INFO / WARNING / ERROR (takes priority)
+      GARM_DEBUG      — legacy flag; if set (and GARM_LOG_LEVEL absent) maps to DEBUG
+      GARM_LOG_FILE   — optional full path; enables a rotating file handler (10 MB × 5)
+      GARM_LOG_JSON   — optional boolean (1/true/yes); tries pythonjsonlogger, falls back
+    """
+    from logging.handlers import RotatingFileHandler
+
+    # Determine log level
+    level_name = os.environ.get("GARM_LOG_LEVEL")
+    if not level_name:
+        level = logging.DEBUG if os.environ.get("GARM_DEBUG") else logging.WARNING
+    else:
+        level = getattr(logging, level_name.upper(), logging.INFO)
+
+    # Build formatter (JSON optional)
+    use_json = os.environ.get("GARM_LOG_JSON", "").lower() in ("1", "true", "yes")
+    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    if use_json:
+        try:
+            from pythonjsonlogger import jsonlogger  # type: ignore[import]
+
+            formatter: logging.Formatter = jsonlogger.JsonFormatter(fmt)
+        except Exception:
+            formatter = logging.Formatter(fmt)
+    else:
+        formatter = logging.Formatter(fmt)
+
+    root = logging.getLogger()
+    if not root.handlers:
+        sh = logging.StreamHandler(sys.stderr)
+        sh.setFormatter(formatter)
+        root.addHandler(sh)
+
+        log_file = os.environ.get("GARM_LOG_FILE")
+        if log_file:
+            try:
+                dirname = os.path.dirname(log_file)
+                if dirname:
+                    os.makedirs(dirname, exist_ok=True)
+            except Exception:
+                pass
+            fh = RotatingFileHandler(log_file, maxBytes=_LOG_FILE_MAX_BYTES, backupCount=_LOG_FILE_BACKUP_COUNT)
+            fh.setFormatter(formatter)
+            root.addHandler(fh)
+
+    root.setLevel(level)
 
 
 @click.group(
