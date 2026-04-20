@@ -1,0 +1,4 @@
+# Dev-only documentation build dependencies
+furo>=2024.1.29
+sphinx>=8.0
+sphinxcontrib-mermaid>=0.9
