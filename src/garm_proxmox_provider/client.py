@@ -757,14 +757,16 @@ class PVEClient:
                             or info.get("err_data")
                             or info.get("err")
                         )
-                        out = err = ""
+                        out = ""
+                        err = ""
                         try:
                             if out_b64:
                                 out = base64.b64decode(out_b64).decode(errors="replace")
                             if err_b64:
                                 err = base64.b64decode(err_b64).decode(errors="replace")
                         except Exception:
-                            out, err = str(out_b64), str(err_b64)
+                            out = str(out_b64)
+                            err = str(err_b64)
 
                         logger.info(
                             "QGA exec for VM %d finished: exitcode=%r stdout=%r stderr=%r",
