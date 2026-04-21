@@ -36,6 +36,7 @@ def _apply_extra_specs(bootstrap: BootstrapInstance, cfg: Any) -> dict[str, Any]
     """Merge defaults with extra_specs overrides from the bootstrap payload."""
     c = cfg.cluster
     f = cfg.get_flavor(bootstrap.flavor)
+    img = cfg.get_image(bootstrap.image) if bootstrap.image else None
     overrides: dict[str, Any] = {}
     es = bootstrap.extra_specs
 
@@ -43,9 +44,14 @@ def _apply_extra_specs(bootstrap: BootstrapInstance, cfg: Any) -> dict[str, Any]
     overrides["memory_mb"] = int(es.get("memory_mb", f.memory_mb))
     overrides["node"] = es.get("node", c.node)
 
-    # Allow per-instance template override via extra_specs
+    # Template VMID: explicit extra_specs override > image config > None
     tmpl_raw = es.get("template_vmid")
-    overrides["template_vmid"] = int(tmpl_raw) if tmpl_raw is not None else None
+    if tmpl_raw is not None:
+        overrides["template_vmid"] = int(tmpl_raw)
+    elif img is not None and img.template_vmid is not None:
+        overrides["template_vmid"] = img.template_vmid
+    else:
+        overrides["template_vmid"] = None
     return overrides
 
 

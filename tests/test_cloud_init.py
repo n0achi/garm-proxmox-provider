@@ -125,3 +125,23 @@ def test_windows_labels_fallback_to_pool_id() -> None:
     b = _bootstrap(os_type="windows", labels=[])
     ud = render_userdata(b, "2001", _mock_cluster_config())
     assert '$env:RUNNER_LABELS = "pool-111"' in ud
+
+
+def test_linux_runner_install_template_decoded() -> None:
+    """When runner_install_template is in extra_specs, it is decoded and used directly."""
+    import base64
+
+    custom_script = "#!/bin/bash\necho 'custom runner install'\n"
+    b64 = base64.b64encode(custom_script.encode()).decode()
+    b = _bootstrap(extra_specs={"runner_install_template": b64})
+    ud = render_userdata(b, "1001", _mock_cluster_config())
+    assert "echo 'custom runner install'" in ud
+    # The pre-baked fallback path should NOT be called.
+    assert "bash /opt/garm/scripts/startup-linux.sh" not in ud
+
+
+def test_linux_runner_install_template_bad_b64_falls_back() -> None:
+    """Invalid base64 in runner_install_template falls back to pre-baked script."""
+    b = _bootstrap(extra_specs={"runner_install_template": "NOT_VALID_BASE64!!!"})
+    ud = render_userdata(b, "1001", _mock_cluster_config())
+    assert "bash /opt/garm/scripts/startup-linux.sh" in ud

@@ -187,6 +187,7 @@ def test_default_instance_type_is_vm(tmp_path: Path) -> None:
     cfg = load_config(_write_config(tmp_path, MINIMAL_TOML))
     assert cfg.images["default"].type == "vm"
     assert cfg.images["default"].lxc_unprivileged is True
+    assert cfg.images["default"].template_vmid is None
 
 
 def test_lxc_instance_type_loads(tmp_path: Path) -> None:
@@ -208,3 +209,27 @@ lxc_unprivileged = false
     assert "default" in cfg.images
     assert cfg.images["default"].type == "lxc"
     assert cfg.images["default"].lxc_unprivileged is False
+
+
+def test_image_template_vmid_loads(tmp_path: Path) -> None:
+    toml = """\
+[pve]
+host = "pve.example.com"
+user = "root@pam"
+token_name = "garm"
+token_value = "aaaa"
+
+[cluster]
+node = "pve1"
+
+[images.ubuntu]
+type = "vm"
+template = 9100
+
+[images.win]
+type = "vm"
+template = 9200
+"""
+    cfg = load_config(_write_config(tmp_path, toml))
+    assert cfg.images["ubuntu"].template_vmid == 9100
+    assert cfg.images["win"].template_vmid == 9200

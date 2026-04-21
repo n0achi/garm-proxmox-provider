@@ -49,6 +49,7 @@ class FlavorConfig:
 class ImageConfig:
     type: str = "vm"  # "vm" or "lxc"
     lxc_unprivileged: bool = True
+    template_vmid: int | None = None  # Proxmox VMID of the template to clone
 
 
 @dataclass
@@ -165,6 +166,7 @@ def load_config(path: str) -> Config:
         images[key] = ImageConfig(
             type=type_val,
             lxc_unprivileged=bool(val.get("lxc_unprivileged", True)),
+            template_vmid=int(val["template"]) if val.get("template") else None,
         )
 
     # --- Logging section (optional) ---------------------------------------

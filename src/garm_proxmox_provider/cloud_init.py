@@ -5,16 +5,23 @@ Templates assume the runner binary is already present on the VM image
   - Linux: /opt/garm/scripts/startup-linux.sh
   - Windows: C:\\garm\\scripts\\startup-windows.ps1
 
-The scripts only handle registration, service start, and status callback.
+When GARM is configured with a pool-level runner install template
+(``runner_install_template`` in ``extra_specs``), that rendered script is used
+directly as the bootstrap body instead of calling the pre-baked path.  This
+allows running without any baked-in scripts in the image.
 """
 
 from __future__ import annotations
 
+import base64
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import ClusterConfig
     from .models import BootstrapInstance
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Forge detection
@@ -54,35 +61,23 @@ chmod 700 /home/runner/.ssh
 chmod 600 /home/runner/.ssh/authorized_keys
 """
 
-    # If the bootstrap payload provides a base64-encoded installer template,
-    # decode it into the expected startup script path so we can run it.
-    installer_b64 = None
-    try:
-        installer_b64 = (
-            bootstrap.extra_specs.get("runner_install_template")
-            if bootstrap.extra_specs
-            else None
-        )
-    except Exception:
-        installer_b64 = None
-
-    install_snippet = ""
+    # Prefer GARM-rendered install template from extra_specs (base64-encoded).
+    # When present this IS the full bootstrap script; decode and use it directly.
+    installer_script = ""
+    installer_b64 = (bootstrap.extra_specs or {}).get("runner_install_template")
     if installer_b64:
-        # create scripts dir, write the base64 content into the startup script
-        # and make it executable. Use a heredoc with a quoted delimiter to avoid
-        # variable expansion in the payload.
-        install_snippet = f"""mkdir -p /opt/garm/scripts
-cat > /opt/garm/scripts/startup-linux.sh <<'__GARM_INSTALL__'
-{installer_b64}
-__GARM_INSTALL__
-chmod +x /opt/garm/scripts/startup-linux.sh
+        try:
+            decoded = base64.b64decode(installer_b64).decode(errors="replace")
+            installer_script = decoded
+        except Exception as exc:
+            logger.warning(
+                "Failed to decode runner_install_template for %s: %s",
+                bootstrap.name,
+                exc,
+            )
 
-"""
-
-    return f"""#!/bin/bash
-set -euo pipefail
-
-{ssh_setup}{install_snippet}export METADATA_URL="{bootstrap.metadata_url.rstrip("/")}"
+    env_block = f"""\
+export METADATA_URL="{bootstrap.metadata_url.rstrip("/")}"
 export CALLBACK_URL="{bootstrap.callback_url}"
 export BEARER_TOKEN="{bootstrap.instance_token}"
 export REPO_URL="{bootstrap.repo_url}"
@@ -90,9 +85,20 @@ export RUNNER_NAME="{bootstrap.name}"
 export RUNNER_LABELS="{labels}"
 export FORGE_TYPE="{forge_type}"
 export PROVIDER_ID="{provider_id}"
-
-bash /opt/garm/scripts/startup-linux.sh
 """
+
+    if installer_script:
+        # The decoded template is the full bootstrap body.
+        body = installer_script
+    else:
+        # Fall back to calling the pre-baked startup script in the image.
+        body = "bash /opt/garm/scripts/startup-linux.sh\n"
+
+    return f"""#!/bin/bash
+set -euo pipefail
+
+{ssh_setup}{env_block}
+{body}"""
 
 
 # ---------------------------------------------------------------------------
