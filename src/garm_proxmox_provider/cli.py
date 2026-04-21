@@ -144,9 +144,9 @@ def make_cli(provider_type: str) -> click.Group:
     )
     @click.pass_context
     def _cli(ctx: click.Context, config: str) -> None:
-        f"""GARM external provider for Proxmox VE ({type_label}).
+        """GARM external provider for Proxmox VE.
 
-        Manages {type_label} instances on a Proxmox VE cluster.
+        Manages instances on a Proxmox VE cluster.
         Invoked directly by GARM via the GARM_COMMAND environment variable, or
         with explicit sub-commands for local management and debugging.
         """
@@ -320,7 +320,7 @@ def make_cli(provider_type: str) -> click.Group:
             templates = [
                 r
                 for r in resources
-                if str(r.get("template", "0")) == "1" and r.get("type") == res_type
+                if int(r.get("template", 0)) == 1 and r.get("type") == res_type
             ]
 
             if not templates:

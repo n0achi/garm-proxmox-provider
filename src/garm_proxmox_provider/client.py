@@ -173,7 +173,7 @@ class PVEClient:
                 continue
             if res.get("type") != res_type:
                 continue
-            if str(res.get("template", "0")) != "1":
+            if int(res.get("template", 0)) != 1:
                 continue
             node = res.get("node", self._config.cluster.node)
             return node, res, res_type

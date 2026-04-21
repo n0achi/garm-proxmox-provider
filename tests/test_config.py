@@ -69,6 +69,7 @@ def test_load_minimal_config(tmp_path: Path) -> None:
     assert cfg.flavors["default"].cores == 2
     assert cfg.flavors["default"].memory_mb == 4096
     assert cfg.cluster.bridge == "vmbr0"
+    assert cfg.cluster.lxc_unprivileged is True
     # No images section — config has no images dict.
     assert not hasattr(cfg, "images")
 
