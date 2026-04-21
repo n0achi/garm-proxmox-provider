@@ -1,4 +1,10 @@
-"""TOML configuration loader for the GARM Proxmox provider."""
+"""TOML configuration loader for the GARM Proxmox provider.
+
+This module now supports an optional [logging] section in the TOML config.
+Note: runtime environment variables (e.g. GARM_LOG_FILE/GARM_LOG_LEVEL) should
+take precedence over TOML values; the TOML loader only provides defaults that
+the CLI's logging setup can choose to honor when env vars are absent.
+"""
 
 from __future__ import annotations
 
@@ -46,11 +52,22 @@ class ImageConfig:
 
 
 @dataclass
+class LoggingConfig:
+    """Optional logging configuration loaded from TOML [logging]."""
+
+    level: str | None = None  # e.g. "DEBUG", "INFO" - prefer env var when present
+    file: str | None = None  # path to log file (rotating handler)
+    json: bool = False  # whether to use json formatter
+    debug_dump: bool = False  # whether to write startup diagnostic dump to /tmp
+
+
+@dataclass
 class Config:
     pve: PVEConfig
     cluster: ClusterConfig
     flavors: dict[str, FlavorConfig] = field(default_factory=dict)
     images: dict[str, ImageConfig] = field(default_factory=dict)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     def get_flavor(self, name: str) -> FlavorConfig:
         """Return the requested flavor, fallback to 'default', or a baseline flavor."""
@@ -74,7 +91,10 @@ class Config:
 
 
 def load_config(path: str) -> Config:
-    """Load and validate configuration from a TOML file."""
+    """Load and validate configuration from a TOML file.
+
+    Adds optional [logging] parsing and returns a Config containing a LoggingConfig.
+    """
     try:
         with open(path, "rb") as f:
             data = tomllib.load(f)
@@ -147,9 +167,51 @@ def load_config(path: str) -> Config:
             lxc_unprivileged=bool(val.get("lxc_unprivileged", True)),
         )
 
+    # --- Logging section (optional) ---------------------------------------
+    logging_data = data.get("logging", {}) or {}
+    logging_cfg = LoggingConfig(
+        level=str(logging_data.get("level")).upper()
+        if logging_data.get("level")
+        else None,
+        file=str(logging_data.get("file")) if logging_data.get("file") else None,
+        json=bool(logging_data.get("json", False)),
+        debug_dump=bool(logging_data.get("debug_dump", False)),
+    )
+
     return Config(
         pve=pve,
         cluster=cluster,
         flavors=flavors,
         images=images,
+        logging=logging_cfg,
     )
+
+
+def load_logging_from_toml(path: str) -> LoggingConfig | None:
+    """Load optional [logging] section from a TOML file.
+
+    Returns a LoggingConfig when a [logging] section is present, otherwise None.
+    This is a tolerant, best-effort helper used by the CLI to prefer TOML-based
+    logging configuration when environment variables are cleared by the controller.
+    """
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return None
+
+    logging_data = data.get("logging") or {}
+    if not logging_data:
+        return None
+
+    try:
+        level = logging_data.get("level")
+        # Accept either "file" or legacy "log_file" keys
+        file = logging_data.get("file") or logging_data.get("log_file")
+        json_flag = bool(logging_data.get("json", False))
+        debug_dump = bool(logging_data.get("debug_dump", False))
+        return LoggingConfig(
+            level=level, file=file, json=json_flag, debug_dump=debug_dump
+        )
+    except Exception:
+        return None

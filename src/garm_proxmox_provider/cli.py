@@ -25,26 +25,42 @@ LEGACY_COMMAND_MAP = {
 }
 
 
-def _setup_logging() -> None:
-    """Configure root logger from environment variables.
+def _setup_logging(config_path: str | None = None) -> None:
+    """Configure root logger from environment variables, falling back to TOML config.
 
-    Supported env vars:
-      GARM_LOG_LEVEL  — e.g. DEBUG / INFO / WARNING / ERROR (takes priority)
-      GARM_DEBUG      — legacy flag; if set (and GARM_LOG_LEVEL absent) maps to DEBUG
-      GARM_LOG_FILE   — optional full path; enables a rotating file handler (10 MB × 5)
-      GARM_LOG_JSON   — optional boolean (1/true/yes); tries pythonjsonlogger, falls back
+    Preference order:
+      1. Explicit environment variables (GARM_LOG_LEVEL, GARM_LOG_FILE, GARM_LOG_JSON)
+      2. Optional [logging] section in the TOML provider config (if present)
+      3. Built-in defaults
+
+    The TOML loader function used is `load_logging_from_toml()` from `config.py`.
     """
     from logging.handlers import RotatingFileHandler
 
-    # Determine log level
-    level_name = os.environ.get("GARM_LOG_LEVEL")
+    # Try to load logging defaults from TOML if available
+    logging_cfg = None
+    try:
+        from .config import load_logging_from_toml
+
+        toml_path = config_path or os.environ.get(
+            "GARM_PROVIDER_CONFIG_FILE", "garm-provider-proxmox.toml"
+        )
+        logging_cfg = load_logging_from_toml(toml_path)
+    except Exception:
+        logging_cfg = None
+
+    # Determine log level (env var takes precedence over TOML)
+    level_name = os.environ.get("GARM_LOG_LEVEL") or (
+        logging_cfg.level if logging_cfg and logging_cfg.level else None
+    )
     if not level_name:
         level = logging.DEBUG if os.environ.get("GARM_DEBUG") else logging.WARNING
     else:
         level = getattr(logging, level_name.upper(), logging.INFO)
 
-    # Build formatter (JSON optional)
-    use_json = os.environ.get("GARM_LOG_JSON", "").lower() in ("1", "true", "yes")
+    # Build formatter (JSON optional - env var preferred, then TOML)
+    use_json_env = os.environ.get("GARM_LOG_JSON", "").lower() in ("1", "true", "yes")
+    use_json = use_json_env or (logging_cfg.json if logging_cfg else False)
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     if use_json:
         try:
@@ -72,8 +88,10 @@ def _setup_logging() -> None:
         sh.setFormatter(formatter)
         root.addHandler(sh)
 
-    # Always add a rotating file handler when requested, but avoid duplicating handlers
-    log_file = os.environ.get("GARM_LOG_FILE")
+    # Always add a rotating file handler when requested; prefer env var, then TOML
+    log_file = os.environ.get("GARM_LOG_FILE") or (
+        logging_cfg.file if logging_cfg and logging_cfg.file else None
+    )
     if log_file:
         try:
             dirname = os.path.dirname(log_file)
@@ -96,6 +114,38 @@ def _setup_logging() -> None:
                 # Some handlers may not have baseFilename; ignore them
                 continue
 
+        # Aggressive create: if file is missing, attempt to create it with permissive mode
+        # This helps when the controller clears env and the host-mounted file wasn't pre-created.
+        try:
+            if not os.path.exists(log_file):
+                parent = os.path.dirname(log_file) or "."
+                try:
+                    os.makedirs(parent, exist_ok=True)
+                except Exception:
+                    pass
+                try:
+                    # Try to create atomically with desired mode
+                    fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+                    os.close(fd)
+                except FileExistsError:
+                    # created by another process in the meantime
+                    pass
+                except Exception:
+                    # Fallback: open and chmod
+                    try:
+                        with open(log_file, "a"):
+                            pass
+                        try:
+                            os.chmod(log_file, 0o666)
+                        except Exception:
+                            pass
+                    except Exception:
+                        # ignore failures; handler creation may still fail later and be logged
+                        pass
+        except Exception:
+            # best-effort only
+            pass
+
         if not existing_file:
             fh = RotatingFileHandler(
                 log_file,
@@ -106,6 +156,167 @@ def _setup_logging() -> None:
             root.addHandler(fh)
 
     root.setLevel(level)
+
+    # --- Startup diagnostics: help debug why file logging may be silent ---
+    # This emits debug-level diagnostic messages (to configured handlers) about the
+    # logging-related environment and the filesystem state of GARM_LOG_FILE.
+    try:
+        diag = logging.getLogger("garm_proxmox_provider.startup_diag")
+        # Use debug so it respects GARM_LOG_LEVEL and handlers
+        env_snapshot = {
+            "GARM_LOG_LEVEL": os.environ.get("GARM_LOG_LEVEL"),
+            "GARM_DEBUG": os.environ.get("GARM_DEBUG"),
+            "GARM_LOG_FILE": os.environ.get("GARM_LOG_FILE")
+            or (logging_cfg.file if logging_cfg else None),
+            "GARM_LOG_JSON": os.environ.get("GARM_LOG_JSON"),
+            "TOML_logging": {
+                "level": logging_cfg.level if logging_cfg else None,
+                "file": logging_cfg.file if logging_cfg else None,
+                "json": logging_cfg.json if logging_cfg else None,
+                "debug_dump": logging_cfg.debug_dump if logging_cfg else None,
+            },
+        }
+        diag.debug("Startup logging environment: %s", env_snapshot)
+
+        lf = os.environ.get("GARM_LOG_FILE") or (
+            logging_cfg.file if logging_cfg and logging_cfg.file else None
+        )
+
+        # Probe file state and writability via the handlers (if any) and direct stat/open
+        if lf:
+            try:
+                st = os.stat(lf)
+                mode_oct = st.st_mode & 0o777
+                diag.debug(
+                    "Log file exists: %s (mode=%03o uid=%s gid=%s size=%d)",
+                    lf,
+                    mode_oct,
+                    getattr(st, "st_uid", None),
+                    getattr(st, "st_gid", None),
+                    getattr(st, "st_size", 0),
+                )
+            except FileNotFoundError:
+                diag.debug("Log file does not exist yet: %s", lf)
+            except Exception as exc:
+                diag.debug("Failed to stat log file %s: %s", lf, exc)
+
+            # Try opening for append to check writability (no-op write)
+            try:
+                # Ensure parent dir exists before trying to open, best-effort
+                parent_dir = os.path.dirname(lf) or "."
+                if parent_dir and not os.path.exists(parent_dir):
+                    os.makedirs(parent_dir, exist_ok=True)
+                with open(lf, "a") as f:
+                    f.write("")  # no-op
+                diag.debug("Successfully opened log file for append: %s", lf)
+            except Exception as exc:
+                # Use exception logging so we get stack trace in whatever handlers are present
+                diag.exception("Unable to open/write to log file %s: %s", lf, exc)
+
+        # --- Forced startup dump (guaranteed write) ---
+        # If debugging via TOML or env was requested, produce a deterministic
+        # diagnostic file under /tmp so we capture the provider environment and
+        # permissions even when logging handlers are silent or env vars are cleared.
+        try:
+            debug_dump_enabled = False
+            garm_debug_env = os.environ.get("GARM_DEBUG_DUMP")
+            if garm_debug_env is not None and garm_debug_env != "":
+                if str(garm_debug_env).lower() in ("1", "true", "yes"):
+                    debug_dump_enabled = True
+            elif logging_cfg and getattr(logging_cfg, "debug_dump", False):
+                debug_dump_enabled = True
+
+            if debug_dump_enabled:
+                try:
+                    import json as _json
+
+                    report = {
+                        "pid": os.getpid(),
+                        "uid": getattr(os, "getuid", lambda: None)(),
+                        "gid": getattr(os, "getgid", lambda: None)(),
+                        "cwd": os.getcwd(),
+                        "env": {
+                            "GARM_LOG_LEVEL": os.environ.get("GARM_LOG_LEVEL"),
+                            "GARM_LOG_FILE": os.environ.get("GARM_LOG_FILE")
+                            or (logging_cfg.file if logging_cfg else None),
+                            "GARM_LOG_JSON": os.environ.get("GARM_LOG_JSON"),
+                            "GARM_COMMAND": os.environ.get("GARM_COMMAND"),
+                            "GARM_PROVIDER_CONFIG_FILE": os.environ.get(
+                                "GARM_PROVIDER_CONFIG_FILE"
+                            ),
+                        },
+                        "toml_probe": {
+                            "path": toml_path if "toml_path" in locals() else None,
+                            "logging": {
+                                "level": logging_cfg.level if logging_cfg else None,
+                                "file": logging_cfg.file if logging_cfg else None,
+                                "json": logging_cfg.json if logging_cfg else None,
+                                "debug_dump": logging_cfg.debug_dump
+                                if logging_cfg
+                                else None,
+                            }
+                            if logging_cfg
+                            else None,
+                        },
+                    }
+
+                    # If lf is present, add stat info and try a direct append with a single marker line
+                    if lf:
+                        try:
+                            st = os.stat(lf)
+                            report["log_file_stat"] = {
+                                "exists": True,
+                                "uid": getattr(st, "st_uid", None),
+                                "gid": getattr(st, "st_gid", None),
+                                "mode": oct(st.st_mode & 0o777),
+                                "size": getattr(st, "st_size", 0),
+                            }
+                        except FileNotFoundError:
+                            report["log_file_stat"] = {"exists": False}
+                        except Exception as exc:
+                            report["log_file_stat"] = {"error": str(exc)}
+
+                        # Attempt to append a safe marker so the host-mounted file is touched
+                        try:
+                            with open(lf, "a") as _lfh:
+                                _lfh.write(f"[startup-dump] pid={os.getpid()}\\n")
+                            report["log_file_write_attempt"] = "ok"
+                        except Exception as exc:
+                            report["log_file_write_attempt"] = f"failed: {exc}"
+
+                    # Write the JSON report to /tmp (best-effort)
+                    try:
+                        with open("/tmp/garm_provider_startup.txt", "w") as rpt:
+                            rpt.write(_json.dumps(report, indent=2))
+                        # Ensure permissive read for convenience
+                        try:
+                            os.chmod("/tmp/garm_provider_startup.txt", 0o644)
+                        except Exception:
+                            pass
+                    except Exception as exc:
+                        diag.exception(
+                            "Failed to write /tmp/garm_provider_startup.txt: %s", exc
+                        )
+
+                except Exception as exc:
+                    diag.exception("Startup forced dump failed: %s", exc)
+        except Exception:
+            # Never allow diagnostics to break startup
+            pass
+
+    except Exception:
+        # Diagnostics must never crash provider startup; swallow errors but log them.
+        try:
+            logging.getLogger(__name__).exception("Startup diagnostics failed")
+        except Exception:
+            # Last-resort silent ignore to avoid raising during import/startup
+            pass
+
+
+# Ensure logging is configured on import so the controller (which may import or
+# spawn the provider and clear environment variables) still gets TOML-based
+# logging configured. This runs once at module import time.
+_setup_logging()
 
 
 @click.group(
@@ -128,7 +339,7 @@ def cli(ctx: click.Context, config: str) -> None:
     Can be invoked with explicit subcommands or via the GARM_COMMAND
     environment variable for legacy compatibility.
     """
-    _setup_logging()
+    _setup_logging(config)
 
     if ctx.invoked_subcommand is not None:
         return
